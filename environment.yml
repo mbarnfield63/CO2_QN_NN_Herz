@@ -1,0 +1,16 @@
+name: tf_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - tensorflow
+      - keras
+      - scikit-learn
+      - ipykernel
+      - notebook
+      - tqdm
+      - seaborn
+      - xgboost

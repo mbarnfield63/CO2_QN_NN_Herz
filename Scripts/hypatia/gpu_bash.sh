@@ -1,0 +1,1 @@
+srun -p GPU -N1 --mem=8G --gres=gpu:v100:1 --ntasks-per-node=1 --time=2-0:00:00 --pty bash

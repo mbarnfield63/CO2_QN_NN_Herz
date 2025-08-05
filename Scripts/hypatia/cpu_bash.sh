@@ -1,0 +1,1 @@
+srun -p RCIF -N1 --mem=8G --ntasks-per-node=1 --time=2-0:00:00 --pty bash

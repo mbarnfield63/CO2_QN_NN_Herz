@@ -1,0 +1,1 @@
+source /share/apps/anaconda/3-2022.05/etc/profile.d/conda.sh
