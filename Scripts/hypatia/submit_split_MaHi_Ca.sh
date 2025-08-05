@@ -13,8 +13,5 @@
 source /share/apps/anaconda/3-2022.05/etc/profile.d/conda.sh
 conda activate tf_env
 
-# Change directory (use bash, not srun)
-cd /home/ucapmgb/CO2_QN_NN_Herz || exit
-
 # Run Python script
-srun python Scripts/split_MaHi_Ca.py Data/
+srun python Scripts/split_MaHi_Ca.py Data/Raw/
