@@ -170,6 +170,9 @@ if __name__ == "__main__":
     ma_df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
     ca_df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
 
+    # Rename columns for consistency
+    ma_df.rename(columns={'Sym_A"': 'Sym_Adp', "Sym_A'": 'Sym_Ap'}, inplace=True)
+
     # Save the processed dataframes to separate files
     ma_df.to_csv(f'Data/CO2_all_ma.txt', index=False)
     ca_df.to_csv(f'Data/CO2_all_ca.txt', index=False)

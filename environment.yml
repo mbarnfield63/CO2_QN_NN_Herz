@@ -1,16 +1,15 @@
-name: tf_env
+name: CO2
 channels:
-  - defaults
   - conda-forge
 dependencies:
-  - python=3.10
-  - pip
-  - pip:
-      - tensorflow
-      - keras
-      - scikit-learn
-      - ipykernel
-      - notebook
-      - tqdm
-      - seaborn
-      - xgboost
+  - python=3.11
+  - pytorch
+  - torchmetrics
+  - torchvision
+  - tensorflow
+  - keras
+  - scikit-learn
+  - ipykernel
+  - notebook
+  - tqdm
+  - seaborn
