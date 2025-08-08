@@ -103,7 +103,11 @@ class CO2QuantumClassifier(nn.Module):
 
 
 # ===== Loss with l2 constraint penalty
-def compute_loss(outputs, targets, criterion_list, penalty_weight=1.0):
+def compute_loss(outputs, targets, criterion_list, target_cols, penalty_weight=1.0):
+    """
+    Compute loss with optional quantum number constraints.
+    Flexible to work with different target column arrangements.
+    """
     total_loss = 0
     batch_size = targets.shape[0]
 
@@ -111,46 +115,60 @@ def compute_loss(outputs, targets, criterion_list, penalty_weight=1.0):
     for i in range(len(outputs)):
         total_loss += criterion_list[i](outputs[i], targets[:, i])
 
-    # Apply constraint on l2 (index 2) based on v2 (index 1)
-    v2_pred = torch.argmax(outputs[1], dim=1)    # predicted v2
-    l2_pred = torch.argmax(outputs[2], dim=1)    # predicted l2
+    # Apply constraint on l2 based on v2 (only if both are present)
+    # This is domain-specific knowledge for quantum mechanics
+    v2_idx = None
+    l2_idx = None
+    
+    # Find indices for v2 and l2 in target columns
+    for i, col in enumerate(target_cols):
+        if 'v2' in col.lower() or 'm2' in col.lower():
+            v2_idx = i
+        elif 'l2' in col.lower():
+            l2_idx = i
+    
+    # Only apply constraint if both v2 and l2 are present
+    if v2_idx is not None and l2_idx is not None and penalty_weight > 0:
+        v2_pred = torch.argmax(outputs[v2_idx], dim=1)    # predicted v2
+        l2_pred = torch.argmax(outputs[l2_idx], dim=1)    # predicted l2
 
-    # Valid l2s for each v2
-    penalty = 0
-    for i in range(batch_size):
-        v2 = v2_pred[i].item()
-        l2 = l2_pred[i].item()
+        # Valid l2s for each v2 (quantum mechanics constraint)
+        penalty = 0
+        for i in range(batch_size):
+            v2 = v2_pred[i].item()
+            l2 = l2_pred[i].item()
 
-        valid_l2s = list(range(v2, -1, -2)) if v2 % 2 == 0 else list(range(v2, 0, -2))
-        if l2 not in valid_l2s:
-            penalty += 1.0  # flat penalty per violation
+            valid_l2s = list(range(v2, -1, -2)) if v2 % 2 == 0 else list(range(v2, 0, -2))
+            if l2 not in valid_l2s:
+                penalty += 1.0  # flat penalty per violation
 
-    total_loss += penalty_weight * (penalty / batch_size)
+        total_loss += penalty_weight * (penalty / batch_size)
+    
     return total_loss
 
 
 # ===== Train/Eval
-def train(model, dataloader, optimizer, criterion_list, device):
+def train(model, dataloader, optimizer, criterion_list, TARGET_COLS, device):
     model.train()
     total_loss = 0
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
         optimizer.zero_grad()
         outputs = model(X)
-        loss = compute_loss(outputs, y, criterion_list)
+        loss = compute_loss(outputs, y, criterion_list, TARGET_COLS)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
     return total_loss / len(dataloader)
 
-def evaluate(model, dataloader, criterion_list, device):
+def evaluate(model, dataloader, criterion_list, TARGET_COLS, device):
     model.eval()
     total_loss = 0
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
             outputs = model(X)
-            loss = compute_loss(outputs, y, criterion_list)
+            loss = compute_loss(outputs, y, criterion_list, TARGET_COLS)
             total_loss += loss.item()
     return total_loss / len(dataloader)
 
@@ -170,39 +188,63 @@ def get_predictions(model, dataloader, device):
     return np.vstack(y_true), np.vstack(y_pred)
 
 
-def get_feature_importance(model, dataloader, criterion_list, device, feature_cols, target_cols, output_dir=None):
+def get_feature_importance(model, dataloader, criterion_list, device, feature_cols, target_cols, output_dir=None, seed=42):
+    """
+    Calculate feature importance using permutation importance.
+    Uses entire dataset and random seeding.
+    """
     model.eval()
     
-    # Calculate baseline accuracy for each target
-    y_true, y_pred = get_predictions(model, dataloader, device)
-    baseline_accuracies = {label: accuracy_score(y_true[:, i], y_pred[:, i]) for i, label in enumerate(target_cols)}
+    # Get all data from dataloader (not just first batch)
+    all_X = []
+    all_y = []
+    with torch.no_grad():
+        for X_batch, y_batch in dataloader:
+            all_X.append(X_batch)
+            all_y.append(y_batch)
+    
+    X_full = torch.cat(all_X, dim=0).to(device)
+    y_full = torch.cat(all_y, dim=0).to(device)
+    
+    # Calculate baseline accuracy for each target using full dataset
+    with torch.no_grad():
+        outputs_baseline = model(X_full)
+        baseline_preds = [torch.argmax(out, dim=1).cpu().numpy() for out in outputs_baseline]
+    
+    baseline_accuracies = {}
+    for i, label in enumerate(target_cols):
+        baseline_accuracies[label] = accuracy_score(y_full[:, i].cpu().numpy(), baseline_preds[i])
 
     importance_results = {}
+    
+    # Set random seed for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    
     for target_idx, target_label in enumerate(target_cols):
         print(f"\nCalculating feature importance for {target_label}...")
         feature_importance = {}
+        
         with torch.no_grad():
             for feature_idx, feature_name in enumerate(feature_cols):
-                # Create a copy of the original dataloader's data
-                X_orig, y_orig = next(iter(dataloader))
-                X_orig, y_orig = X_orig.to(device), y_orig.to(device)
-
-                # Permute the values of one feature column
-                X_permuted = X_orig.clone()
-                idx = torch.randperm(X_permuted.size(0))
-                X_permuted[:, feature_idx] = X_permuted[idx, feature_idx]
+                # Create a copy of the full dataset
+                X_permuted = X_full.clone()
+                
+                # Permute the values of one feature column across entire dataset
+                perm_idx = torch.randperm(X_permuted.size(0), device=device)
+                X_permuted[:, feature_idx] = X_permuted[perm_idx, feature_idx]
 
                 # Get predictions with permuted data
-                outputs = model(X_permuted)
+                outputs_permuted = model(X_permuted)
                 
                 # Calculate accuracy for the permuted data for the current target
-                permuted_preds = torch.argmax(outputs[target_idx], dim=1).cpu().numpy()
-                permuted_accuracy = accuracy_score(y_orig[:, target_idx].cpu().numpy(), permuted_preds)
+                permuted_preds = torch.argmax(outputs_permuted[target_idx], dim=1).cpu().numpy()
+                permuted_accuracy = accuracy_score(y_full[:, target_idx].cpu().numpy(), permuted_preds)
                 
                 # Calculate the drop in accuracy
                 importance = baseline_accuracies[target_label] - permuted_accuracy
                 feature_importance[feature_name] = importance
-        
+                
         importance_results[target_label] = feature_importance
 
     df = pd.DataFrame(importance_results)
@@ -231,7 +273,8 @@ def get_feature_importance(model, dataloader, criterion_list, device, feature_co
         plt.tight_layout()
 
         # Save the combined plot to the output directory
-        plt.savefig(os.path.join(output_dir, "Plots/feature_importance_plots.png"))
+        plt.savefig(os.path.join(output_dir, "Plots/feature_importance_plots.png"), dpi=300, bbox_inches='tight')
+        plt.close()
 
     return df
 

@@ -78,8 +78,8 @@ print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 # === Train
 print("\nStarting training...")
 for epoch in range(EPOCHS):
-    train_loss = train(model, train_loader, optimizer, criterion_list, DEVICE)
-    val_loss = evaluate(model, val_loader, criterion_list, DEVICE)
+    train_loss = train(model, train_loader, optimizer, criterion_list, TARGET_COLS, DEVICE)
+    val_loss = evaluate(model, val_loader, criterion_list, TARGET_COLS, DEVICE)
 
     train_losses.append(train_loss)
     val_losses.append(val_loss)
@@ -89,7 +89,7 @@ for epoch in range(EPOCHS):
 
 # === Evaluate
 print("\nEvaluating model...")
-test_loss = evaluate(model, test_loader, criterion_list, DEVICE)
+test_loss = evaluate(model, test_loader, criterion_list, TARGET_COLS, DEVICE)
 print(f"Test Loss: {test_loss:.4f}")
 
 # Save model
