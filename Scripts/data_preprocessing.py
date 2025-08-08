@@ -164,7 +164,7 @@ if __name__ == "__main__":
     ca_df = prepare_atomic_features(ca_df)
 
     # Columns to drop
-    columns_to_drop = ['ID', '??', 'AFGL_m1', 'AFGL_m2', 'AFGL_l2', 'AFGL_m3', 'AFGL_r',
+    columns_to_drop = ['ID', 'unc', '??', 'AFGL_m1', 'AFGL_m2', 'AFGL_l2', 'AFGL_m3', 'AFGL_r',
                        'Source', 'E_Ca', 'iso']
     
     ma_df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
