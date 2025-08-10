@@ -3,8 +3,33 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
 from model_utils import *
+from energy_splitting import *
 import os
 import time
+
+
+def analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device='cpu'):
+    """Analyze model performance across energy ranges."""
+    y_true, y_pred = get_predictions(model, test_loader, device)
+    
+    # Add predictions to test dataframe for analysis
+    test_analysis = test_df.copy()
+    for i, col in enumerate(TARGET_COLS):
+        test_analysis[f'{col}_pred'] = y_pred[:, i]
+        test_analysis[f'{col}_correct'] = (y_true[:, i] == y_pred[:, i])
+    
+    # Analyze performance by energy quartiles
+    energy_quartiles = pd.qcut(test_analysis[energy_col], 4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
+    test_analysis['energy_quartile'] = energy_quartiles
+    
+    print("\nPerformance by Energy Quartile:")
+    for col in TARGET_COLS:
+        accuracy_by_quartile = test_analysis.groupby('energy_quartile')[f'{col}_correct'].mean()
+        print(f"{col}:")
+        for quartile, acc in accuracy_by_quartile.items():
+            print(f"  {quartile}: {acc:.4f}")
+    
+    return test_analysis
 
 
 start_time = time.time()
@@ -42,7 +67,10 @@ TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
 
 # === Data
 # Capture the target_mappers
-train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH, FEATURE_COLS, TARGET_COLS)
+train_df, val_df, test_df, scaler, target_mappers = load_data_with_sequential_energy_split(DATA_PATH,
+                                                                               FEATURE_COLS,
+                                                                               TARGET_COLS,
+                                                                               output_dir=OUTPUT_DIR)
 
 # Since LabelEncoder creates 0-indexed classes, we can get dimensions from max values
 target_dims = []
@@ -91,6 +119,10 @@ for epoch in range(EPOCHS):
 print("\nEvaluating model...")
 test_loss = evaluate(model, test_loader, criterion_list, TARGET_COLS, DEVICE)
 print(f"Test Loss: {test_loss:.4f}")
+
+# === Analyze Energy Performance
+print("\nAnalyzing energy performance...")
+test_analysis = analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device=DEVICE)
 
 # Save model
 torch.save(model.state_dict(), "Models/co2_model.pt")
