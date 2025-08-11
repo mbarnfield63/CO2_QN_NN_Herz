@@ -3,7 +3,6 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
 from model_utils import *
-from energy_splitting import *
 import os
 import time
 
@@ -40,7 +39,7 @@ print("Current device:", torch.cuda.get_device_name(0) if torch.cuda.is_availabl
 # === Config
 DATA_PATH = 'Data/CO2_all_ma.txt'
 BATCH_SIZE = 512
-EPOCHS = 50
+EPOCHS = 100
 LEARNING_RATE = 1e-3
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = "Data/Outputs"
@@ -66,11 +65,11 @@ TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
 
 
 # === Data
-# Capture the target_mappers
-train_df, val_df, test_df, scaler, target_mappers = load_data_with_sequential_energy_split(DATA_PATH,
-                                                                               FEATURE_COLS,
-                                                                               TARGET_COLS,
-                                                                               output_dir=OUTPUT_DIR)
+train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
+                                                              FEATURE_COLS,
+                                                              TARGET_COLS,
+                                                              energy_splitting=True,
+                                                              output_dir=OUTPUT_DIR)
 
 # Since LabelEncoder creates 0-indexed classes, we can get dimensions from max values
 target_dims = []
