@@ -1,8 +1,9 @@
 /_jobs/
 */__pycache__/
 Data/*
+Data/Outputs/CSVs/*
 Models/
 
 
 !Data/Outputs/
-!Data/Outputs/**
+!Data/Outputs/Plots/
