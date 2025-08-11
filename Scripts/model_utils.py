@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
@@ -9,6 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix
 import os
+from pandas import Series
 
 
 # ===== Dataset
@@ -102,7 +104,7 @@ class CO2QuantumClassifier(nn.Module):
         return [head(x) for head in self.heads]
 
 
-# ===== Loss with l2 constraint penalty
+# ===== Loss functions with l2 constraint penalty
 def compute_loss(outputs, targets, criterion_list, target_cols, penalty_weight=1.0):
     """
     Compute loss with optional quantum number constraints.
@@ -116,7 +118,6 @@ def compute_loss(outputs, targets, criterion_list, target_cols, penalty_weight=1
         total_loss += criterion_list[i](outputs[i], targets[:, i])
 
     # Apply constraint on l2 based on v2 (only if both are present)
-    # This is domain-specific knowledge for quantum mechanics
     v2_idx = None
     l2_idx = None
     
@@ -148,18 +149,37 @@ def compute_loss(outputs, targets, criterion_list, target_cols, penalty_weight=1
 
 
 # ===== Train/Eval
-def train(model, dataloader, optimizer, criterion_list, TARGET_COLS, device):
+def train(model, dataloader, optimizer, criterion_list, 
+          TARGET_COLS, device, confidence_threshold=0.8):
+    """
+    Training function that tracks confidence statistics
+    """
     model.train()
     total_loss = 0
+    confidence_stats = {target: [] for target in TARGET_COLS}
+    
     for X, y in dataloader:
         X, y = X.to(device), y.to(device)
         optimizer.zero_grad()
         outputs = model(X)
+        
+        # Calculate loss (can use confidence_weighted_loss if desired)
         loss = compute_loss(outputs, y, criterion_list, TARGET_COLS)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-    return total_loss / len(dataloader)
+        
+        # Track confidence during training
+        with torch.no_grad():
+            for i, target in enumerate(TARGET_COLS):
+                probs = F.softmax(outputs[i], dim=1)
+                max_probs = torch.max(probs, dim=1)[0]
+                confidence_stats[target].extend(max_probs.cpu().numpy())
+    
+    # Calculate mean confidence for this epoch
+    epoch_confidence = {target: np.mean(scores) for target, scores in confidence_stats.items()}
+    
+    return total_loss / len(dataloader), epoch_confidence
 
 def evaluate(model, dataloader, criterion_list, TARGET_COLS, device):
     model.eval()
@@ -178,14 +198,65 @@ def get_predictions(model, dataloader, device):
     model.eval()
     y_true = []
     y_pred = []
+    confidences = []
+    entropies = []
+    
     with torch.no_grad():
         for X, y in dataloader:
             X = X.to(device)
             outputs = model(X)
+            
+            # Get probabilities for each target
+            probs = [F.softmax(out, dim=1) for out in outputs]
+            
+            # Get predictions
             preds = [torch.argmax(out, dim=1).cpu().numpy() for out in outputs]
+            
+            # Calculate confidence metrics for each target
+            batch_confidences = []
+            batch_entropies = []
+            
+            for prob in probs:
+                # Max probability as confidence
+                max_probs = torch.max(prob, dim=1)[0].cpu().numpy()
+                batch_confidences.append(max_probs)
+                
+                # Entropy as uncertainty measure (lower = more confident)
+                entropy = -torch.sum(prob * torch.log(prob + 1e-8), dim=1).cpu().numpy()
+                batch_entropies.append(entropy)
+            
             y_pred.append(np.stack(preds, axis=1))
             y_true.append(y.numpy())
-    return np.vstack(y_true), np.vstack(y_pred)
+            confidences.append(np.stack(batch_confidences, axis=1))
+            entropies.append(np.stack(batch_entropies, axis=1))
+    
+    return (np.vstack(y_true), np.vstack(y_pred), 
+            np.vstack(confidences), np.vstack(entropies))
+
+
+def get_uncertain_predictions(y_true, y_pred, confidences, entropies, 
+                              target_cols, confidence_threshold=0.5):
+    """
+    Identify predictions with low confidence for further analysis
+    """
+    uncertain_samples = []
+    
+    for i, target in enumerate(target_cols):
+        low_conf_mask = confidences[:, i] < confidence_threshold
+        
+        if np.sum(low_conf_mask) > 0:
+            uncertain_data = {
+                'target': target,
+                'sample_indices': np.where(low_conf_mask)[0],
+                'true_values': y_true[low_conf_mask, i],
+                'predicted_values': y_pred[low_conf_mask, i],
+                'confidence_scores': confidences[low_conf_mask, i],
+                'entropy_scores': entropies[low_conf_mask, i],
+                'correct_predictions': (y_true[low_conf_mask, i] == y_pred[low_conf_mask, i])
+            }
+            uncertain_samples.append(uncertain_data)
+    
+    return uncertain_samples
 
 
 def get_feature_importance(model, dataloader, criterion_list, device, feature_cols, target_cols, output_dir=None, seed=42):
@@ -222,7 +293,7 @@ def get_feature_importance(model, dataloader, criterion_list, device, feature_co
     np.random.seed(seed)
     
     for target_idx, target_label in enumerate(target_cols):
-        print(f"\nCalculating feature importance for {target_label}...")
+        print(f"  {target_label}...")
         feature_importance = {}
         
         with torch.no_grad():
@@ -287,7 +358,7 @@ def save_accuracy_report(y_true, y_pred, target_cols, output_dir):
     for i, label in enumerate(target_cols):
         acc = accuracy_score(y_true[:, i], y_pred[:, i])
         metrics[label] = acc
-        print(f"{label} Accuracy: {acc:.4f}")
+        print(f"  {label} Accuracy: {acc:.4f}")
 
     df_metrics = pd.DataFrame([metrics])
     df_metrics.to_csv(os.path.join(output_dir, "CSVs/test_accuracy.csv"), index=False)
@@ -305,7 +376,7 @@ def plot_confusion_matrices(y_true, y_pred, target_cols, output_dir):
         plt.xlabel("Predicted")
         plt.ylabel("True")
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"Plots/confusion_{label}.png"))
+        plt.savefig(os.path.join(output_dir, f"Plots/Confusion/confusion_{label}.png"))
         plt.close()
 
 
@@ -322,4 +393,95 @@ def plot_loss(train_losses, val_losses, output_dir):
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "Plots/loss_plot.png"))
+    plt.close()
+
+
+def confidence_by_energy(y_true, y_pred, confidences, entropies, 
+                         energy_values, target_cols, output_dir):
+    # Sort by energy for smooth lines
+    sort_idx = np.argsort(energy_values)
+    energy_sorted = energy_values[sort_idx]
+
+    os.makedirs(os.path.join(output_dir, "CSVs"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
+
+    # Prepare DataFrame for CSV output
+    records = []
+    for i, target in enumerate(target_cols):
+        for idx in sort_idx:
+            records.append({
+                'target': target,
+                'energy': energy_values[idx],
+                'confidence': confidences[idx, i],
+                'entropy': entropies[idx, i],
+                'correct': int(y_true[idx, i] == y_pred[idx, i])
+            })
+    df_analysis = pd.DataFrame(records)
+    df_analysis.to_csv(os.path.join(output_dir, "CSVs/confidence_by_energy.csv"), index=False)
+
+    # Plot confidence and accuracy as a function of energy (line plots)
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    axes = axes.flatten()
+
+    for i, target in enumerate(target_cols):
+        ax = axes[i]
+        # Get sorted values for this target
+        conf_sorted = confidences[sort_idx, i]
+        ent_sorted = entropies[sort_idx, i]
+        correct_sorted = (y_true[sort_idx, i] == y_pred[sort_idx, i]).astype(float)
+
+        # Rolling mean for accuracy for smoother curve
+        window = max(1, len(energy_sorted) // 100)
+        if window > 1:
+            acc_smooth = Series(correct_sorted).rolling(window, center=True, min_periods=1).mean().values
+            conf_smooth = Series(conf_sorted).rolling(window, center=True, min_periods=1).mean().values
+        else:
+            acc_smooth = correct_sorted
+            conf_smooth = conf_sorted
+
+        ax.plot(energy_sorted, acc_smooth, label='Accuracy', color='blue', alpha=0.7)
+        ax2 = ax.twinx()
+        ax2.plot(energy_sorted, conf_smooth, label='Confidence', color='red', alpha=0.7)
+
+        ax.set_xlabel('Energy')
+        ax.set_ylabel('Accuracy', color='blue')
+        ax2.set_ylabel('Confidence', color='red')
+        ax.set_title(f'{target}')
+        ax.grid(True, alpha=0.3)
+
+        # Legends
+        lines, labels = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines + lines2, labels + labels2, loc='upper right')
+
+    plt.suptitle("Confidence & Accuracy by Energy")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "Plots/confidence_by_energy.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def plot_confidence_distribution(confidences, entropies, target_cols, output_dir):
+    """
+    Plot distribution of confidence scores for each target
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    axes = axes.flatten()
+    
+    for i, target in enumerate(target_cols):
+        ax = axes[i]
+        
+        # Plot histogram of confidence scores
+        ax.hist(confidences[:, i], bins=50, alpha=0.7, label='Confidence', density=True)
+        ax.axvline(np.mean(confidences[:, i]), color='red', linestyle='--', 
+                  label=f'Mean: {np.mean(confidences[:, i]):.3f}')
+        
+        ax.set_xlabel('Confidence Score')
+        ax.set_ylabel('Density')
+        ax.set_title(f'{target}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    
+    plt.suptitle("Confidence Distributions")
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "Plots/confidence_distributions.png"), dpi=300, bbox_inches='tight')
     plt.close()
