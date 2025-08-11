@@ -9,6 +9,30 @@ import os
 import time
 import numpy as np
 
+def analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device='cpu'):
+    """Analyze model performance across energy ranges."""
+    y_true, y_pred = get_predictions(model, test_loader, device)
+    
+    # Add predictions to test dataframe for analysis
+    test_analysis = test_df.copy()
+    for i, col in enumerate(TARGET_COLS):
+        test_analysis[f'{col}_pred'] = y_pred[:, i]
+        test_analysis[f'{col}_correct'] = (y_true[:, i] == y_pred[:, i])
+    
+    # Analyze performance by energy quartiles
+    energy_quartiles = pd.qcut(test_analysis[energy_col], 4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
+    test_analysis['energy_quartile'] = energy_quartiles
+    
+    print("\nPerformance by Energy Quartile:")
+    for col in TARGET_COLS:
+        accuracy_by_quartile = test_analysis.groupby('energy_quartile')[f'{col}_correct'].mean()
+        print(f"{col}:")
+        for quartile, acc in accuracy_by_quartile.items():
+            print(f"  {quartile}: {acc:.4f}")
+    
+    return test_analysis
+
+
 start_time = time.time()
 print("Time start: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
 print("Current device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
@@ -16,7 +40,7 @@ print("Current device:", torch.cuda.get_device_name(0) if torch.cuda.is_availabl
 # === Config
 DATA_PATH = 'Data/CO2_all_ma.txt'
 BATCH_SIZE = 512
-EPOCHS = 50
+EPOCHS = 100
 LEARNING_RATE = 1e-3
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = "Data/Outputs"
@@ -41,7 +65,11 @@ FEATURE_COLS = [
 TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
 
 # === Data
-train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH, FEATURE_COLS, TARGET_COLS)
+train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
+                                                              FEATURE_COLS,
+                                                              TARGET_COLS,
+                                                              energy_splitting=True,
+                                                              output_dir=OUTPUT_DIR)
 
 # Get target dimensions
 target_dims = []
@@ -101,6 +129,10 @@ for epoch in range(EPOCHS):
 print("\nEvaluating model with confidence analysis...")
 test_loss = evaluate(model, test_loader, criterion_list, TARGET_COLS, DEVICE)
 print(f"  Test Loss: {test_loss:.4f}")
+
+# === Analyze Energy Performance
+print("\nAnalyzing energy performance...")
+test_analysis = analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device=DEVICE)
 
 # Save model
 torch.save(model.state_dict(), "Models/co2_model.pt")
