@@ -196,23 +196,18 @@ def confidence_by_energy(y_true, y_pred, confidences, entropies,
             conf_smooth = conf_sorted
 
         ax.plot(energy_sorted, acc_smooth, label='Accuracy', color='blue', alpha=0.7)
-        ax2 = ax.twinx()
-        ax2.plot(energy_sorted, conf_smooth, label='Confidence', color='red', alpha=0.7)
+        ax.plot(energy_sorted, conf_smooth, label='Confidence', color='red', alpha=0.7)
 
         ax.set_xlabel('Energy')
-        ax.set_ylabel('Accuracy', color='blue')
-        ax2.set_ylabel('Confidence', color='red')
+        ax.set_ylabel('Score')
         ax.set_title(f'{target}')
         ax.grid(True, alpha=0.3)
 
-        # Legends
-        lines, labels = ax.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax2.legend(lines + lines2, labels + labels2, loc='upper right')
-
         # Set y-axis limits
         ax.set_ylim(0, 1.05)
-        ax2.set_ylim(0, 1.05)
+
+        # Add legend
+        ax.legend(loc='lower left')
 
     plt.suptitle("Confidence & Accuracy by Energy")
     plt.tight_layout()
