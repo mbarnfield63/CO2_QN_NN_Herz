@@ -1,36 +1,13 @@
-# Enhanced main.py with confidence tracking
-
+import numpy as np
+import os
 import pandas as pd
+import time
 import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from model_utils import *
-import os
-import time
-import numpy as np
 
-def analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device='cpu'):
-    """Analyze model performance across energy ranges."""
-    y_true, y_pred = get_predictions(model, test_loader, device)
-    
-    # Add predictions to test dataframe for analysis
-    test_analysis = test_df.copy()
-    for i, col in enumerate(TARGET_COLS):
-        test_analysis[f'{col}_pred'] = y_pred[:, i]
-        test_analysis[f'{col}_correct'] = (y_true[:, i] == y_pred[:, i])
-    
-    # Analyze performance by energy quartiles
-    energy_quartiles = pd.qcut(test_analysis[energy_col], 4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
-    test_analysis['energy_quartile'] = energy_quartiles
-    
-    print("\nPerformance by Energy Quartile:")
-    for col in TARGET_COLS:
-        accuracy_by_quartile = test_analysis.groupby('energy_quartile')[f'{col}_correct'].mean()
-        print(f"{col}:")
-        for quartile, acc in accuracy_by_quartile.items():
-            print(f"  {quartile}: {acc:.4f}")
-    
-    return test_analysis
+from model_utils import *
+from plotting import *
 
 
 start_time = time.time()
@@ -103,7 +80,9 @@ print(f"\nModel created with {len(FEATURE_COLS)} input features and {len(TARGET_
 print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 # === Train with confidence tracking
-print("\nStarting training with confidence tracking...")
+print(f"\n{'='*60}")
+print("MODEL TRAINING:")
+print(f"{'='*60}")
 for epoch in range(EPOCHS):
     # Training with confidence tracking
     train_loss, train_conf = train(
@@ -125,6 +104,10 @@ for epoch in range(EPOCHS):
     print(f"Epoch {epoch+1:2d}/{EPOCHS} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
     print(f" "*14 + f"Train Conf: {np.mean(list(train_conf.values())):.3f} | Val Conf: {np.mean(list(val_conf.values())):.3f}")
 
+print(f"\n{'='*60}")
+print("MODEL PERFORMANCE:")
+print(f"{'='*60}")
+
 # === Enhanced Evaluation with Confidence
 print("\nEvaluating model with confidence analysis...")
 test_loss = evaluate(model, test_loader, criterion_list, TARGET_COLS, DEVICE)
@@ -132,7 +115,7 @@ print(f"  Test Loss: {test_loss:.4f}")
 
 # === Analyze Energy Performance
 print("\nAnalyzing energy performance...")
-test_analysis = analyze_energy_performance(model, test_loader, test_df, energy_col='E_original', device=DEVICE)
+test_analysis = analyze_energy_performance(model, test_loader, test_df, TARGET_COLS, energy_col='E_original', device=DEVICE)
 
 # Save model
 torch.save(model.state_dict(), "Models/co2_model.pt")
@@ -173,7 +156,7 @@ for i, target in enumerate(TARGET_COLS):
 
 # === Energy-based confidence analysis
 print("\nAnalyzing confidence by energy regions...")
-energy_values = test_df['E'].values
+energy_values = test_df['E_original'].values
 confidence_by_energy(
     y_true, y_pred, confidences, entropies, energy_values, TARGET_COLS, OUTPUT_DIR
 )
@@ -258,6 +241,8 @@ for i, target in enumerate(TARGET_COLS):
     
     ax4.plot(bin_centers, binned_acc.values, 'o-', label=target, alpha=0.7)
 
+ax4.set_xlim(0, 1)
+ax4.set_ylim(0, 1)
 ax4.set_title("Confidence vs Accuracy")
 ax4.set_xlabel("Confidence Score")
 ax4.set_ylabel("Accuracy")
