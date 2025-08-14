@@ -90,6 +90,12 @@ def load_data(path,
                                         stratify=temp_df[target_cols[0]], random_state=42)
 
     print(f"\nFinal split sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
+    
+    # Plot splits of energy distributions by isotopologue
+    plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_col='E_original', n_col=3, output_dir=output_dir)
+    train_df.drop(columns=['iso'], inplace=True)
+    val_df.drop(columns=['iso'], inplace=True)
+    test_df.drop(columns=['iso'], inplace=True)
 
     # Scale features (but keep original energy for plotting)
     scaler = StandardScaler()
@@ -210,12 +216,22 @@ class CO2QuantumClassifier(nn.Module):
         super().__init__()
         self.shared = nn.Sequential(
             nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.GELU(),
+            nn.Linear(128, 128),
+            nn.GELU(),
             nn.Linear(128, 64),
-            nn.ReLU()
+            nn.GELU()
         )
-        self.heads = nn.ModuleList([nn.Linear(64, out_dim) for out_dim in output_dims])
+        
+        # Separate classification heads for each Herzberg quantum number
+        self.heads = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(64, 32),
+                nn.GELU(),
+                nn.Linear(32, out_dim)  # raw logits
+            )
+            for out_dim in output_dims
+        ])
 
     def forward(self, x):
         x = self.shared(x)
@@ -376,6 +392,78 @@ def get_uncertain_predictions(y_true, y_pred, confidences, entropies,
     
     return uncertain_samples
 
+def analyze_isotopologue_predictions(y_true, y_pred, confidences, entropies, df, target_cols):
+    """
+    Extract predictions for individual isotopologues.
+    """    
+    isotopologue_mapping = {
+        (15.994915, 12.0, 15.994915): "626",
+        (15.994915, 12.0, 16.999132): "627",  
+        (15.994915, 12.0, 17.999161): "628",
+        (16.999132, 12.0, 16.999132): "727",
+        (16.999132, 12.0, 17.999161): "728",
+        (17.999161, 12.0, 17.999161): "828",        
+
+        (15.994915, 13.003355, 15.994915): "636",
+        (15.994915, 13.003355, 16.999132): "637",
+        (15.994915, 13.003355, 17.999161): "638",
+        (16.999132, 13.003355, 16.999132): "737",
+        (16.999132, 13.003355, 17.999161): "738",
+        (17.999161, 13.003355, 17.999161): "838",
+    }
+    
+    # Determine which isotopologue each sample represents
+    isotopologue_labels = []
+    
+    for idx in range(len(df)):
+        # Find the carbon isotope
+        if df.loc[df.index[idx], "mass_c_12.0"] > 0:
+            c_mass = 12.0
+        else:
+            c_mass = 13.003355
+            
+        # Find the oxygen isotopes
+        o1_mass = None
+        o2_mass = None
+        
+        for o_mass in [15.994915, 16.999132, 17.999161]:
+            if df.loc[df.index[idx], f"mass_o_1_{o_mass}"] > 0:
+                o1_mass = o_mass
+            if df.loc[df.index[idx], f"mass_o_2_{o_mass}"] > 0:
+                o2_mass = o_mass
+                
+        # Map to isotopologue name
+        isotope_key = (o1_mass, c_mass, o2_mass)
+        isotopologue_name = isotopologue_mapping.get(isotope_key, "unknown")
+        isotopologue_labels.append(isotopologue_name)
+    
+    # Group predictions by isotopologue
+    results = {}
+    isotopologue_labels = np.array(isotopologue_labels)
+    
+    for isotopologue in np.unique(isotopologue_labels):
+        if isotopologue == "unknown":
+            continue
+            
+        mask = isotopologue_labels == isotopologue
+        
+        # Calculate accuracy for each target column
+        accuracies = {}
+        for i, label in enumerate(target_cols):
+            acc = accuracy_score(y_true[mask, i], y_pred[mask, i])
+            accuracies[label] = acc
+        
+        results[isotopologue] = {
+            'y_true': y_true[mask],
+            'y_pred': y_pred[mask], 
+            'confidences': confidences[mask],
+            'entropies': entropies[mask],
+            'accuracies': accuracies,
+            'count': np.sum(mask)
+        }
+    
+    return results
+
 
 def get_feature_importance(model, dataloader, criterion_list, device, feature_cols, target_cols, output_dir=None, seed=42):
     """
@@ -468,18 +556,38 @@ def get_feature_importance(model, dataloader, criterion_list, device, feature_co
     return df
 
 
-def save_accuracy_report(y_true, y_pred, target_cols, output_dir):
+def save_accuracy_report(results, target_cols, output_dir):
+    """
+    Save isotopologue accuracy report to CSV.
+    
+    Parameters:
+    -----------
+    results : dict
+        Output from analyze_isotopologue_predictions
+    target_cols : list
+        List of target column names
+    output_dir : str
+        Directory to save the report
+    """
     # Ensure the CSVs directory exists
     os.makedirs(os.path.join(output_dir, "CSVs"), exist_ok=True)
     
-    metrics = {}
-    for i, label in enumerate(target_cols):
-        acc = accuracy_score(y_true[:, i], y_pred[:, i])
-        metrics[label] = acc
-        print(f"  {label} Accuracy: {acc:.4f}")
-
-    df_metrics = pd.DataFrame([metrics])
-    df_metrics.to_csv(os.path.join(output_dir, "CSVs/test_accuracy.csv"), index=False)
+    # Create a dataframe with isotopologues as rows and target columns as columns
+    accuracy_data = {}
+    
+    for isotopologue, data in results.items():
+        accuracy_data[isotopologue] = data['accuracies']
+    
+    df_accuracies = pd.DataFrame(accuracy_data).T  # Transpose so isotopologues are rows
+    df_accuracies.index.name = 'Isotopologue'
+    
+    # Add sample count column
+    df_accuracies['Sample_Count'] = [results[iso]['count'] for iso in df_accuracies.index]
+    
+    # Save to CSV
+    df_accuracies.to_csv(os.path.join(output_dir, "CSVs/isotopologue_accuracy.csv"))
+    
+    return df_accuracies
 
 
 def analyze_energy_performance(model, test_loader, test_df, TARGET_COLS, energy_col='E_original', device='cpu'):

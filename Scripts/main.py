@@ -45,7 +45,7 @@ TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
 train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
                                                               FEATURE_COLS,
                                                               TARGET_COLS,
-                                                              energy_splitting=True,
+                                                              energy_splitting=False,
                                                               output_dir=OUTPUT_DIR)
 
 # Get target dimensions
@@ -127,7 +127,10 @@ y_true, y_pred, confidences, entropies = get_predictions(model, test_loader, DEV
 
 # Standard accuracy report
 print("Test Set Accuracy Results:")
-save_accuracy_report(y_true, y_pred, TARGET_COLS, OUTPUT_DIR)
+results = analyze_isotopologue_predictions(y_true, y_pred, confidences, entropies, test_df, TARGET_COLS)
+accuracy_df = save_accuracy_report(results, TARGET_COLS, OUTPUT_DIR)
+plot_isotopologue_accuracies(results, TARGET_COLS, OUTPUT_DIR)
+plot_isotopologue_comparison(results, TARGET_COLS, OUTPUT_DIR)
 
 # Confidence analysis
 print("\nAnalyzing confidence scores...")

@@ -152,6 +152,73 @@ def plot_energy_distributions_detailed(train_df, val_df, test_df,
     return stats_data
 
 
+def plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_col='E_original', n_col=3, output_dir=None):
+    """
+    Plot energy distributions based on the original energy values for each isotopologue.
+    """
+    # Get unique isotopologues from all splits
+    all_isos = sorted(set(train_df[iso_col].unique()) | 
+                     set(val_df[iso_col].unique()) | 
+                     set(test_df[iso_col].unique()))
+    
+    # Calculate grid dimensions
+    n_isos = len(all_isos)
+    n_rows = (n_isos + n_col - 1) // n_col
+    
+    # Determine global energy range for consistent axis scaling
+    all_energies = []
+    for df in [train_df, val_df, test_df]:
+        all_energies.extend(df[energy_col].values)
+    
+    energy_min = min(all_energies)
+    energy_max = max(all_energies)
+    
+    # Create figure and subplots
+    fig, axes = plt.subplots(n_rows, n_col, sharex=True, sharey=True, figsize=(5*n_col, 4*n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    elif n_col == 1:
+        axes = axes.reshape(-1, 1)
+    
+    # Plot colors for each split
+    colors = ['blue', 'orange', 'green']
+    labels = ['Train', 'Val', 'Test']
+    
+    for idx, iso in enumerate(all_isos):
+        row = idx // n_col
+        col = idx % n_col
+        ax = axes[row, col]
+        
+        # Plot histogram for each split
+        for data_df, label, color in zip([train_df, val_df, test_df], labels, colors):
+            iso_data = data_df[data_df[iso_col] == iso]
+            if len(iso_data) > 0:
+                ax.hist(iso_data[energy_col], bins=30, alpha=0.3, density=True, 
+                       label=f'{label} (n={len(iso_data)})', color=color)
+        
+        # Set consistent axis limits
+        ax.set_xlim(energy_min, energy_max)
+        ax.set_xlabel('Energy (cm^-1)')
+        ax.set_ylabel('Density')
+        ax.set_title(f'Isotopologue: {iso}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    
+    # Hide unused subplots
+    for idx in range(n_isos, n_rows * n_col):
+        row = idx // n_col
+        col = idx % n_col
+        axes[row, col].set_visible(False)
+    
+    plt.tight_layout()
+    
+    if output_dir:
+        os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
+        plt.savefig(os.path.join(output_dir, "Plots/isotopologue_energy_distributions.png"), 
+                   dpi=300, bbox_inches='tight')
+    plt.close()
+
+
 def confidence_by_energy(y_true, y_pred, confidences, entropies, 
                          energy_values, target_cols, output_dir):
     # Sort by energy for smooth lines
@@ -239,4 +306,126 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
     plt.suptitle("Confidence Distributions")
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "Plots/confidence_distributions.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(12, 8)):
+    """
+    Create bar plots showing accuracy for each isotopologue across different target columns.
+    
+    Parameters:
+    -----------
+    results : dict
+        Output from analyze_isotopologue_predictions
+    target_cols : list
+        List of target column names
+    output_dir : str
+        Directory to save the plots
+    figsize : tuple
+        Figure size for each subplot
+    """
+    # Ensure plots directory exists
+    os.makedirs(os.path.join(output_dir, "plots"), exist_ok=True)
+    
+    # Extract isotopologue names and sort them
+    isotopologues = sorted(results.keys())
+    
+    # Create a separate plot for each target column
+    for i, target_col in enumerate(target_cols):
+        plt.figure(figsize=figsize)
+        
+        # Extract accuracies for this target column
+        accuracies = [results[iso]['accuracies'][target_col] for iso in isotopologues]
+        sample_counts = [results[iso]['count'] for iso in isotopologues]
+        
+        # Create bar plot
+        bars = plt.bar(isotopologues, accuracies, alpha=0.7, color=plt.cm.viridis(i/len(target_cols)))
+        
+        # Add sample count annotations on top of bars
+        for j, (bar, count) in enumerate(zip(bars, sample_counts)):
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2., height + 0.005,
+                    f'n={count}', ha='center', va='bottom', fontsize=9)
+        
+        plt.title(f'Accuracy by Isotopologue - {target_col}', fontsize=14, fontweight='bold')
+        plt.xlabel('Isotopologue (OCO notation)', fontsize=12)
+        plt.ylabel('Accuracy', fontsize=12)
+        plt.ylim(0, 1.05)
+        plt.grid(axis='y', alpha=0.3)
+        
+        # Add horizontal line at mean accuracy
+        mean_acc = np.mean(accuracies)
+        plt.axhline(y=mean_acc, color='red', linestyle='--', alpha=0.7, 
+                   label=f'Mean: {mean_acc:.3f}')
+        plt.legend()
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f"Plots/Isotopologue/isotopologue_accuracy_{target_col.replace('/', '_')}.png"), 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+
+
+def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(15, 10)):
+    """
+    Create a comprehensive comparison plot showing all target columns for all isotopologues.
+    
+    Parameters:
+    -----------
+    results : dict
+        Output from analyze_isotopologue_predictions
+    target_cols : list
+        List of target column names
+    output_dir : str
+        Directory to save the plots
+    figsize : tuple
+        Figure size
+    """
+    # Ensure plots directory exists
+    os.makedirs(os.path.join(output_dir, "plots"), exist_ok=True)
+    
+    # Prepare data for plotting
+    isotopologues = sorted(results.keys())
+    
+    # Create dataframe for easier plotting with seaborn
+    plot_data = []
+    for iso in isotopologues:
+        for target in target_cols:
+            plot_data.append({
+                'Isotopologue': iso,
+                'Target': target,
+                'Accuracy': results[iso]['accuracies'][target],
+                'Sample_Count': results[iso]['count']
+            })
+    
+    df_plot = pd.DataFrame(plot_data)
+    
+    # Create the comparison plot
+    plt.figure(figsize=figsize)
+    
+    # Create grouped bar plot
+    x = np.arange(len(isotopologues))
+    width = 0.8 / len(target_cols)
+    
+    colors = plt.cm.Set3(np.linspace(0, 1, len(target_cols)))
+    
+    for i, target in enumerate(target_cols):
+        target_data = df_plot[df_plot['Target'] == target]
+        accuracies = [target_data[target_data['Isotopologue'] == iso]['Accuracy'].iloc[0] 
+                     for iso in isotopologues]
+        
+        plt.bar(x + i * width - width * (len(target_cols)-1)/2, accuracies, 
+               width, label=target, color=colors[i], alpha=0.8)
+    
+    plt.xlabel('Isotopologue (OCO notation)', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+    plt.title('Accuracy Comparison Across All Isotopologues and Target Columns', 
+              fontsize=14, fontweight='bold')
+    plt.xticks(x, isotopologues)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(axis='y', alpha=0.3)
+    plt.ylim(0, 1.05)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "Plots/Isotopologue/all_isotopologues_accuracy_comparison.png"), 
+               dpi=300, bbox_inches='tight')
     plt.close()
