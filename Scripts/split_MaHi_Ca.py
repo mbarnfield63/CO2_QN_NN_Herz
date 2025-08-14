@@ -3,6 +3,22 @@ import glob
 import sys
 import time
 
+iso_formats = {
+    '12C-16O2': 626,
+    '16O-12C-17O': 627,
+    '16O-12C-18O': 628,
+    '12C-17O2': 727,
+    '17O-12C-18O': 728,
+    '12C-18O2': 828,
+
+    '13C-16O2': 636,
+    '16O-13C-17O': 637,
+    '16O-13C-18O': 638,
+    '13C-17O2': 737,
+    '17O-13C-18O': 738,
+    '13C-18O2': 838,
+}
+
 column_names = ['ID', 'E', 'gtot', 'J', 'unc', '??', 'tot_sym', 'e_f',
                'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
                'Trove_coeff', 'AFGL_m1', 'AFGL_m2', 'AFGL_l2', 'AFGL_m3', 'AFGL_r',
@@ -15,7 +31,11 @@ def split_raw_file(filename):
     - CO2_[iso]_ca.csv = Calculated data
     """
     # Get iso from filename
-    iso = filename.split('20250617_CO2_')[1].split('_syurchenko.states')[0]
+    iso_filename = filename.split('Data/Raw/')[1].split('__')[0]
+    iso = iso_formats.get(iso_filename)
+    if iso is None:
+        raise ValueError(f"Unknown isotope filename: {iso_filename}")
+
     print(f"Processing {iso}...")
 
     # Read the file with the specified column names
@@ -48,7 +68,7 @@ if __name__ == "__main__":
 
     directory = sys.argv[1]
     # Get all files in directory that are .states files
-    files = glob.glob(f"{directory}/*_syurchenko.states")
+    files = glob.glob(f"{directory}/*.states.cut")
     
     import concurrent.futures
 
