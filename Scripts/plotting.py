@@ -35,7 +35,68 @@ def plot_loss(train_losses, val_losses, output_dir):
     plt.ylabel("Loss")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "Plots/loss_plot.png"))
+    plt.savefig(os.path.join(output_dir, "Plots/Training/loss_plot.png"))
+    plt.close()
+
+
+def plot_enhanced_training_analysis(train_losses, val_losses, train_confidences, val_confidences,
+                                    TARGET_COLS, OUTPUT_DIR, confidence_df):
+    """
+    Plot enhanced training analysis including loss curves, confidence distributions, and confidence vs accuracy.
+    """
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+    # Loss curves
+    ax1.plot(train_losses, label="Train Loss")
+    ax1.plot(val_losses, label="Val Loss")
+    ax1.set_title("Training & Validation Loss")
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Loss")
+    ax1.legend()
+
+    # Overall confidence curves
+    train_conf_means = [np.mean(list(conf.values())) for conf in train_confidences]
+    val_conf_means = [np.mean(list(conf.values())) for conf in val_confidences]
+
+    ax2.plot(train_conf_means, label="Train Confidence")
+    ax2.plot(val_conf_means, label="Val Confidence")
+    ax2.set_title("Mean Confidence During Training")
+    ax2.set_xlabel("Epoch")
+    ax2.set_ylabel("Mean Confidence")
+    ax2.legend()
+
+    # Individual target confidence (validation)
+    for i, target in enumerate(TARGET_COLS):
+        target_confs = [conf[target] for conf in val_confidences]
+        ax3.plot(target_confs, label=target)
+    ax3.set_title("Validation Confidence by Target")
+    ax3.set_xlabel("Epoch")
+    ax3.set_ylabel("Confidence")
+    ax3.legend()
+
+    # Confidence vs Accuracy scatter
+    for i, target in enumerate(TARGET_COLS):
+        target_mask = confidence_df['target'] == target
+        target_data = confidence_df[target_mask]
+        
+        # Group by confidence bins for cleaner visualization
+        conf_bins = np.linspace(0, 1, 20)
+        conf_binned = pd.cut(target_data['confidence'], bins=conf_bins)
+        binned_acc = target_data.groupby(conf_binned)['correct'].mean()
+        bin_centers = [(conf_bins[i] + conf_bins[i+1])/2 for i in range(len(conf_bins)-1)]
+        
+        ax4.plot(bin_centers, binned_acc.values, 'o-', label=target, alpha=0.7)
+
+    ax4.set_xlim(0, 1)
+    ax4.set_ylim(0, 1)
+    ax4.set_title("Confidence vs Accuracy")
+    ax4.set_xlabel("Confidence Score")
+    ax4.set_ylabel("Accuracy")
+    ax4.legend()
+    ax4.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Training/enhanced_training_analysis.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -111,7 +172,7 @@ def plot_energy_distributions_detailed(train_df, val_df, test_df,
    
     if output_dir:
         os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
-        plt.savefig(os.path.join(output_dir, "Plots/detailed_energy_distribution_analysis.png"), 
+        plt.savefig(os.path.join(output_dir, "Plots/Training/detailed_energy_distribution_analysis.png"), 
                    dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -214,7 +275,7 @@ def plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_co
     
     if output_dir:
         os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
-        plt.savefig(os.path.join(output_dir, "Plots/isotopologue_energy_distributions.png"), 
+        plt.savefig(os.path.join(output_dir, "Plots/Isotopologue/isotopologue_energy_distributions.png"), 
                    dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -278,7 +339,7 @@ def confidence_by_energy(y_true, y_pred, confidences, entropies,
 
     plt.suptitle("Confidence & Accuracy by Energy")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "Plots/confidence_by_energy.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, "Plots/Confidence/confidence_by_energy.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -305,7 +366,7 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
     
     plt.suptitle("Confidence Distributions")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "Plots/confidence_distributions.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, "Plots/Confidence/confidence_distributions.png"), dpi=300, bbox_inches='tight')
     plt.close()
 
 
