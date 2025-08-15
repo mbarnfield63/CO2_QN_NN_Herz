@@ -386,7 +386,7 @@ def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(12, 
         Figure size for each subplot
     """
     # Ensure plots directory exists
-    os.makedirs(os.path.join(output_dir, "plots"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
     
     # Extract isotopologue names and sort them
     isotopologues = sorted(results.keys())
@@ -442,7 +442,7 @@ def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(15, 
         Figure size
     """
     # Ensure plots directory exists
-    os.makedirs(os.path.join(output_dir, "plots"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
     
     # Prepare data for plotting
     isotopologues = sorted(results.keys())
