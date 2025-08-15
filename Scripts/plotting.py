@@ -490,3 +490,31 @@ def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(15, 
     plt.savefig(os.path.join(output_dir, "Plots/Isotopologue/all_isotopologues_accuracy_comparison.png"), 
                dpi=300, bbox_inches='tight')
     plt.close()
+
+
+def plot_feature_importance(df, output_dir):
+    # Ensure the Plots directory exists
+    os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
+    
+    # Create a 2x2 grid of subplots
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 12), sharex=False)
+    axes = axes.flatten()
+
+    # Plot the feature importance for each quantum number
+    for i, col in enumerate(df.columns):
+        # Sort the features by importance for the current quantum number
+        sorted_df = df[[col]].sort_values(by=col, ascending=True)
+        
+        # Plotting on the current axis
+        ax = axes[i]
+        sorted_df.plot(kind='barh', ax=ax, legend=False)
+        ax.set_title(f"Feature Importance for {col}")
+        ax.set_xlabel("Importance Score (Drop in Accuracy)")
+        ax.set_ylabel("Feature")
+        
+    # Adjust layout to prevent overlapping titles and labels
+    plt.tight_layout()
+
+    # Save the combined plot to the output directory
+    plt.savefig(os.path.join(output_dir, "Plots/Features/feature_importance.png"), dpi=300, bbox_inches='tight')
+    plt.close()
