@@ -73,7 +73,7 @@ train_confidences = []  # Track confidence during training
 val_confidences = []
 
 # === Model
-model = CO2QuantumClassifier(len(FEATURE_COLS), target_dims).to(DEVICE)
+model = CO2QuantumClassifier(len(FEATURE_COLS), target_dims, p_dropout=0.1).to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion_list = [nn.CrossEntropyLoss() for _ in range(len(TARGET_COLS))]
 
@@ -122,8 +122,15 @@ test_analysis = analyze_energy_performance(model, test_loader, test_df, TARGET_C
 torch.save(model.state_dict(), "Models/co2_model.pt")
 print("  Model saved to Models/co2_model.pt")
 
-# === Get predictions & confidence scores
-print("\nTest set predictions and confidence scores...")
+# === Get predictions, uncertainties & confidence scores
+print("\nTest set predictions and uncertainty scores with MC Dropout...")
+y_true, y_pred, uncertainties = get_mc_dropout_predictions(model, test_loader, DEVICE, n_samples=50)
+
+print("Plotting uncertainty vs. energy...")
+plot_mc_dropout_uncertainty(uncertainties, test_df['E_original'].values, train_df, TARGET_COLS, OUTPUT_DIR)
+
+# Get confidence scores and entropies
+print("\nCalculating confidence scores and entropies...")
 y_true, y_pred, confidences, entropies = get_predictions(model, test_loader, DEVICE)
 
 # Standard accuracy report

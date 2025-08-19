@@ -128,7 +128,8 @@ def sequential_energy_split(df,
                             overlap_fraction=0.1,
                             random_state=42):
     """
-    Split data sequentially by energy ranges with controlled overlap between splits.
+    Split data sequentially by energy ranges with full overlap between train/val 
+    and minor overlap with test set (highest energies).
     
     Args:
         df: DataFrame with all data
@@ -136,11 +137,10 @@ def sequential_energy_split(df,
         train_size, val_size, test_size: Size proportions (should sum to 1.0)
         overlap_fraction: Fraction of overlap between adjacent splits (e.g., 0.1 = 10%)
         random_state: For reproducibility within each energy range
-    
+        
     Returns:
-        train_df, val_df, test_df: DataFrames with overlapping energy ranges
+        train_df, val_df, test_df: DataFrames with specified overlap pattern
     """
-    
     # Sort by energy to ensure proper sequential splitting
     df_sorted = df.sort_values(energy_col).reset_index(drop=True)
     
@@ -150,43 +150,36 @@ def sequential_energy_split(df,
     n_val = int(val_size * n_total)
     n_test = int(test_size * n_total)
     
-    # Calculate overlap sizes
-    overlap_train_val = int(overlap_fraction * min(n_train, n_val))
-    overlap_val_test = int(overlap_fraction * min(n_val, n_test))
-        
-    # Calculate the range boundaries with overlap    
-    # Train range: start from beginning
-    train_start = 0
-    train_end = n_train + overlap_train_val
+    # Calculate overlap size between train/val and test
+    overlap_with_test = int(overlap_fraction * min(n_train + n_val, n_test))
     
-    # Val range: overlaps with train and test
-    val_start = n_train - overlap_train_val
-    val_end = n_train + n_val + overlap_val_test
-    
-    # Test range: overlaps with val, goes to end
-    test_start = n_train + n_val - overlap_val_test
+    # Define energy ranges:
+    # Test: highest energy values (end of sorted data)
+    test_start = n_total - n_test
     test_end = n_total
     
+    # Train/Val: lower energy values with minor overlap into test range
+    trainval_start = 0
+    trainval_end = test_start + overlap_with_test
+    
     # Ensure boundaries are within valid range
-    train_end = min(train_end, n_total)
-    val_start = max(val_start, 0)
-    val_end = min(val_end, n_total)
+    trainval_end = min(trainval_end, n_total)
     test_start = max(test_start, 0)
     
-    # Extract the ranges
-    train_candidates = df_sorted.iloc[train_start:train_end].copy()
-    val_candidates = df_sorted.iloc[val_start:val_end].copy()
+    # Extract the candidate pools
+    # Train and Val share the same candidate pool (full overlap)
+    trainval_candidates = df_sorted.iloc[trainval_start:trainval_end].copy()
     test_candidates = df_sorted.iloc[test_start:test_end].copy()
     
     # Sample to get exact target sizes
     np.random.seed(random_state)
     
-    # Sample exact sizes from each candidate pool
-    train_df = train_candidates.sample(n=min(n_train, len(train_candidates)), 
-                                      random_state=random_state).reset_index(drop=True)
-    val_df = val_candidates.sample(n=min(n_val, len(val_candidates)), 
-                                  random_state=random_state + 1).reset_index(drop=True)
-    test_df = test_candidates.sample(n=min(n_test, len(test_candidates)), 
+    # Sample train and val from the same pool (creates full overlap potential)
+    train_df = trainval_candidates.sample(n=min(n_train, len(trainval_candidates)),
+                                         random_state=random_state).reset_index(drop=True)
+    val_df = trainval_candidates.sample(n=min(n_val, len(trainval_candidates)),
+                                       random_state=random_state + 1).reset_index(drop=True)
+    test_df = test_candidates.sample(n=min(n_test, len(test_candidates)),
                                     random_state=random_state + 2).reset_index(drop=True)
     
     print(f"Sample sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
@@ -198,29 +191,47 @@ def sequential_energy_split(df,
     
     print(f"\nEnergy stats:")
     print(f"  Train:")
-    print(f"  - Range: {train_energy_range[0]:.4f} - {train_energy_range[1]:.4f}")
-    print(f"  - Mean: {train_df[energy_col].mean():.4f}")
+    print(f"    - Range: {train_energy_range[0]:.4f} - {train_energy_range[1]:.4f}")
+    print(f"    - Mean: {train_df[energy_col].mean():.4f}")
     print(f"  Val:")
-    print(f"  - Range: {val_energy_range[0]:.4f} - {val_energy_range[1]:.4f}")
-    print(f"  - Mean: {val_df[energy_col].mean():.4f}")
+    print(f"    - Range: {val_energy_range[0]:.4f} - {val_energy_range[1]:.4f}")
+    print(f"    - Mean: {val_df[energy_col].mean():.4f}")
     print(f"  Test:")
-    print(f"  - Range: {test_energy_range[0]:.4f} - {test_energy_range[1]:.4f}")
-    print(f"  - Mean: {test_df[energy_col].mean():.4f}")
-
+    print(f"    - Range: {test_energy_range[0]:.4f} - {test_energy_range[1]:.4f}")
+    print(f"    - Mean: {test_df[energy_col].mean():.4f}")
+    
+    # Calculate actual overlap statistics
+    trainval_energy_min = min(train_energy_range[0], val_energy_range[0])
+    trainval_energy_max = max(train_energy_range[1], val_energy_range[1])
+    
+    # Overlap between train/val and test
+    overlap_start = max(trainval_energy_min, test_energy_range[0])
+    overlap_end = min(trainval_energy_max, test_energy_range[1])
+    
+    if overlap_start < overlap_end:
+        print(f"\nOverlap with test: {overlap_start:.4f} - {overlap_end:.4f}")
+    else:
+        print(f"\nNo energy overlap with test set")
+        
+    print(f"Train/Val share same energy range (full overlap potential)")
+    
     return train_df, val_df, test_df
 
 
 # ===== Model
 class CO2QuantumClassifier(nn.Module):
-    def __init__(self, input_dim, output_dims):
+    def __init__(self, input_dim, output_dims, p_dropout=0.1):
         super().__init__()
         self.shared = nn.Sequential(
             nn.Linear(input_dim, 128),
             nn.GELU(),
+            nn.Dropout(p_dropout),
             nn.Linear(128, 128),
             nn.GELU(),
+            nn.Dropout(p_dropout),
             nn.Linear(128, 64),
-            nn.GELU()
+            nn.GELU(),
+            nn.Dropout(p_dropout)
         )
         
         # Separate classification heads for each Herzberg quantum number
@@ -228,6 +239,7 @@ class CO2QuantumClassifier(nn.Module):
             nn.Sequential(
                 nn.Linear(64, 32),
                 nn.GELU(),
+                nn.Dropout(p_dropout),
                 nn.Linear(32, out_dim)  # raw logits
             )
             for out_dim in output_dims
@@ -366,6 +378,69 @@ def get_predictions(model, dataloader, device):
     
     return (np.vstack(y_true), np.vstack(y_pred), 
             np.vstack(confidences), np.vstack(entropies))
+
+
+def get_mc_dropout_predictions(model, dataloader, device, n_samples=50):
+    """
+    Performs predictions using MC Dropout to get uncertainty estimates.
+    """
+    # Activate dropout layers for uncertainty estimation
+    for module in model.modules():
+        if module.__class__.__name__.startswith('Dropout'):
+            module.train()
+
+    y_true_list = []
+    # Create a list of lists to store probabilities for each head separately
+    all_head_probs = [[] for _ in model.heads]
+
+    with torch.no_grad():
+        for X, y in dataloader:
+            X = X.to(device)
+            y_true_list.append(y.numpy())
+            
+            # Store probabilities for each MC sample for this batch, separated by head
+            batch_probs_samples_by_head = [[] for _ in model.heads]
+            for _ in range(n_samples):
+                outputs = model(X)
+                probs = [F.softmax(out, dim=1) for out in outputs]
+                
+                # Append the probability tensor for each head to its corresponding list
+                for i, p in enumerate(probs):
+                    batch_probs_samples_by_head[i].append(p.cpu().unsqueeze(0))
+
+            # For each head, stack the MC samples for the current batch
+            for i in range(len(model.heads)):
+                # Stacks along the new dimension 0, shape becomes: (n_samples, batch_size, n_classes)
+                stacked_batch_probs = torch.cat(batch_probs_samples_by_head[i], dim=0)
+                all_head_probs[i].append(stacked_batch_probs)
+
+    # Concatenate results from all batches for each head
+    y_true = np.vstack(y_true_list)
+    
+    # Each item in this list is a tensor of shape: (n_samples, total_samples, n_classes_for_head)
+    final_probs_by_head = [torch.cat(head_probs, dim=1) for head_probs in all_head_probs]
+
+    # --- Calculate final predictions and uncertainties for each head ---
+    y_pred_list = []
+    uncertainty_list = []
+
+    for head_probs in final_probs_by_head:
+        # 1. Mean Predictions
+        mean_probs = torch.mean(head_probs, dim=0) # Shape: (total_samples, n_classes)
+        y_pred_list.append(torch.argmax(mean_probs, dim=1))
+
+        # 2. Uncertainty (Predictive Variance)
+        predictive_variance = torch.var(head_probs, dim=0) # Shape: (total_samples, n_classes)
+        uncertainty_list.append(torch.sum(predictive_variance, dim=1))
+    
+    # Stack the final 1D tensors for predictions and uncertainties
+    y_pred = torch.stack(y_pred_list, dim=1).numpy()
+    uncertainty = torch.stack(uncertainty_list, dim=1).numpy()
+
+    # Restore model to standard evaluation mode
+    model.eval() 
+    
+    return y_true, y_pred, uncertainty
 
 
 def get_uncertain_predictions(y_true, y_pred, confidences, entropies, 

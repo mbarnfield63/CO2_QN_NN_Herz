@@ -518,3 +518,30 @@ def plot_feature_importance(df, output_dir):
     # Save the combined plot to the output directory
     plt.savefig(os.path.join(output_dir, "Plots/Features/feature_importance.png"), dpi=300, bbox_inches='tight')
     plt.close()
+
+
+def plot_mc_dropout_uncertainty(uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR):
+    fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(12, 10), sharex=True)
+    fig.suptitle('MC Dropout: Predictive Uncertainty vs. Energy Level', fontsize=16)
+
+    for i, target in enumerate(TARGET_COLS):
+        ax = axes[i]
+        # Scatter plot of uncertainty for each sample
+        scatter = ax.scatter(energy_values, uncertainties[:, i], alpha=0.5, s=10)
+
+        # Highlight the energy range of the training data
+        train_energy_min = train_df['E_original'].min()
+        train_energy_max = train_df['E_original'].max()
+        ax.axvspan(train_energy_min, train_energy_max, color='green', alpha=0.1, label='Training Energy Region')
+
+        ax.set_ylabel('Predictive Uncertainty')
+        ax.set_title(f'Target: {target}')
+        ax.set_xlim(0, 25000)
+        ax.set_ylim(0, 1)
+        ax.grid(True, which='both', linewidth=0.5)
+
+    axes[-1].legend()
+    axes[-1].set_xlabel('Energy Level (E_original)')
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy.png"))
+    plt.close()
