@@ -370,7 +370,7 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
     plt.close()
 
 
-def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(12, 8)):
+def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(8, 6)):
     """
     Create bar plots showing accuracy for each isotopologue across different target columns.
     
@@ -400,7 +400,7 @@ def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(12, 
         sample_counts = [results[iso]['count'] for iso in isotopologues]
         
         # Create bar plot
-        bars = plt.bar(isotopologues, accuracies, alpha=0.7, color=plt.cm.viridis(i/len(target_cols)))
+        bars = plt.bar(isotopologues, accuracies, alpha=0.7, color=plt.cm.Accent(i/len(target_cols)))
         
         # Add sample count annotations on top of bars
         for j, (bar, count) in enumerate(zip(bars, sample_counts)):
@@ -426,7 +426,7 @@ def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(12, 
         plt.close()
 
 
-def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(15, 10)):
+def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(8, 4)):
     """
     Create a comprehensive comparison plot showing all target columns for all isotopologues.
     
@@ -467,20 +467,19 @@ def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(15, 
     x = np.arange(len(isotopologues))
     width = 0.8 / len(target_cols)
     
-    colors = plt.cm.Set3(np.linspace(0, 1, len(target_cols)))
+    colors = plt.cm.Accent(np.linspace(0, 1, len(target_cols)))
     
     for i, target in enumerate(target_cols):
         target_data = df_plot[df_plot['Target'] == target]
         accuracies = [target_data[target_data['Isotopologue'] == iso]['Accuracy'].iloc[0] 
                      for iso in isotopologues]
-        
+        mean_acc = np.mean(accuracies)*100
         plt.bar(x + i * width - width * (len(target_cols)-1)/2, accuracies, 
-               width, label=target, color=colors[i], alpha=0.8)
+               width, label=f"{target}\n(mean={mean_acc:.3f} %)", color=colors[i])
     
-    plt.xlabel('Isotopologue (OCO notation)', fontsize=12)
-    plt.ylabel('Accuracy', fontsize=12)
-    plt.title('Accuracy Comparison Across All Isotopologues and Target Columns', 
-              fontsize=14, fontweight='bold')
+    plt.xlabel('Isotopologue')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy Comparison')
     plt.xticks(x, isotopologues)
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(axis='y', alpha=0.3)
@@ -521,27 +520,27 @@ def plot_feature_importance(df, output_dir):
 
 
 def plot_mc_dropout_uncertainty(uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR):
-    fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(12, 10), sharex=True)
+    fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(8, 8), sharex=True)
     fig.suptitle('MC Dropout: Predictive Uncertainty vs. Energy Level', fontsize=16)
 
     for i, target in enumerate(TARGET_COLS):
         ax = axes[i]
         # Scatter plot of uncertainty for each sample
-        scatter = ax.scatter(energy_values, uncertainties[:, i], alpha=0.5, s=10)
+        ax.scatter(energy_values, uncertainties[:, i], alpha=0.5, s=10, label=f'{target} Uncertainty')
 
         # Highlight the energy range of the training data
         train_energy_min = train_df['E_original'].min()
         train_energy_max = train_df['E_original'].max()
         ax.axvspan(train_energy_min, train_energy_max, color='green', alpha=0.1, label='Training Energy Region')
 
-        ax.set_ylabel('Predictive Uncertainty')
-        ax.set_title(f'Target: {target}')
-        ax.set_xlim(0, 25000)
+        ax.set_ylabel('Uncertainty')
+        ax.set_xlim(0, 21000)
         ax.set_ylim(0, 1)
         ax.grid(True, which='both', linewidth=0.5)
+        ax.legend(loc='upper left')
 
-    axes[-1].legend()
-    axes[-1].set_xlabel('Energy Level (E_original)')
+    axes[-1].set_xlabel('Energy (cm^-1)')
     plt.tight_layout()
+    plt.subplots_adjust(hspace=0.1)
     plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy.png"))
     plt.close()
