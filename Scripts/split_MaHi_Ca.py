@@ -31,7 +31,7 @@ def split_raw_file(filename):
     - CO2_[iso]_ca.csv = Calculated data
     """
     # Get iso from filename
-    iso_filename = filename.split('Data/Raw/')[1].split('__')[0]
+    iso_filename = filename.split('CO2_all_states/')[1].split('__')[0]
     iso = iso_formats.get(iso_filename)
     if iso is None:
         raise ValueError(f"Unknown isotope filename: {iso_filename}")

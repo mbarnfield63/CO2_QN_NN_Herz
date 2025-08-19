@@ -14,4 +14,4 @@ source /share/apps/anaconda/3-2022.05/etc/profile.d/conda.sh
 conda activate CO2
 
 # Run Python script
-srun python Scripts/split_MaHi_Ca.py Data/Raw/
+srun python Scripts/split_MaHi_Ca.py /home/ucapmgb/raw_data/CO2_all_states/
