@@ -40,7 +40,7 @@ FEATURE_COLS = [
     "e", "f", "Sym_Adp", "Sym_Ap", "Sym_A1", "Sym_A2", "Sym_B1", "Sym_B2"
 ]
 
-TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
+TARGET_COLS = ["AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]
 
 # === Data
 train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
