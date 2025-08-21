@@ -519,19 +519,57 @@ def plot_feature_importance(df, output_dir):
     plt.close()
 
 
-def plot_mc_dropout_uncertainty(uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR):
+def plot_mc_dropout_uncertainty(
+    uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR, threshold=0.15
+):
     fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(8, 8), sharex=True)
-    fig.suptitle('MC Dropout: Predictive Uncertainty vs. Energy Level', fontsize=16)
+    fig.suptitle(
+        f'MC Dropout: Predictive Uncertainty vs. Energy Level\nThreshold = {threshold:.2f}',
+        fontsize=16
+    )
 
     for i, target in enumerate(TARGET_COLS):
         ax = axes[i]
-        # Scatter plot of uncertainty for each sample
-        ax.scatter(energy_values, uncertainties[:, i], alpha=0.5, s=10, label=f'{target} Uncertainty')
+        # Scatter plot of uncertainty for each sample below threshold
+        mask_reject = uncertainties[:, i] > threshold
+        mask_accept = ~mask_reject
+
+        ax.scatter(
+            energy_values[mask_accept],
+            uncertainties[mask_accept, i],
+            alpha=0.5,
+            s=10,
+            label=f'Accepted'
+        )
+
+        # Plot rejected points in red with 'x' marker
+        ax.scatter(
+            energy_values[mask_reject],
+            uncertainties[mask_reject, i],
+            alpha=0.7,
+            s=30,
+            color='red',
+            marker='x',
+            label=f'Rejected ({mask_reject.sum()/len(mask_reject)*100:.1f}%)'
+        )
 
         # Highlight the energy range of the training data
         train_energy_min = train_df['E_original'].min()
         train_energy_max = train_df['E_original'].max()
-        ax.axvspan(train_energy_min, train_energy_max, color='green', alpha=0.1, label='Training Energy Region')
+        ax.axvspan(
+            train_energy_min,
+            train_energy_max,
+            color='green',
+            alpha=0.1,
+            label='Training Energy Region'
+        )
+
+        ax.text(
+            0.925, 0.95, f"{target}",
+            transform=ax.transAxes,
+            fontsize=12, ha='right', va='top',
+            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none')
+        )
 
         ax.set_ylabel('Uncertainty')
         ax.set_xlim(0, 21000)
@@ -542,5 +580,6 @@ def plot_mc_dropout_uncertainty(uncertainties, energy_values, train_df, TARGET_C
     axes[-1].set_xlabel('Energy (cm^-1)')
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.1)
+    os.makedirs(os.path.join(OUTPUT_DIR, "Plots/Uncertainty"), exist_ok=True)
     plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy.png"))
     plt.close()
