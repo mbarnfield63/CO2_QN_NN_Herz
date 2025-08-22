@@ -583,3 +583,82 @@ def plot_mc_dropout_uncertainty(
     os.makedirs(os.path.join(OUTPUT_DIR, "Plots/Uncertainty"), exist_ok=True)
     plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy.png"))
     plt.close()
+
+
+def plot_acceptance_correctness_bars(
+    y_true, y_pred, uncertainties, TARGET_COLS, OUTPUT_DIR, threshold=0.15
+):
+    """
+    Plot bar charts showing Accepted/Rejected vs Correct/Incorrect for each target.
+    
+    Parameters:
+    - y_true: array-like, shape (n_samples, n_targets) - true labels
+    - y_pred: array-like, shape (n_samples, n_targets) - predicted labels  
+    - uncertainties: array-like, shape (n_samples, n_targets) - uncertainty values
+    - TARGET_COLS: list of target column names
+    - OUTPUT_DIR: string, output directory path
+    - threshold: float, uncertainty threshold for acceptance/rejection
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle(
+        f'Prediction Acceptance vs Correctness\nThreshold = {threshold:.2f}',
+        fontsize=16
+    )
+    
+    # Flatten axes for easier indexing
+    axes = axes.flatten()
+    
+    # Colors for the four categories
+    colors = ['#2E8B57', '#FF6B35', '#4169E1', '#DC143C']  # Green, Orange, Blue, Red
+    categories = ['Accepted/Correct', 'Accepted/Incorrect', 'Rejected/Correct', 'Rejected/Incorrect']
+    
+    for i, target in enumerate(TARGET_COLS):
+        ax = axes[i]
+        
+        # Create masks for acceptance/rejection and correctness
+        mask_accept = uncertainties[:, i] <= threshold
+        mask_reject = ~mask_accept
+        mask_correct = (y_true[:, i] == y_pred[:, i])
+        mask_incorrect = ~mask_correct
+        
+        # Count the four categories
+        accepted_correct = np.sum(mask_accept & mask_correct)
+        accepted_incorrect = np.sum(mask_accept & mask_incorrect)
+        rejected_correct = np.sum(mask_reject & mask_correct)
+        rejected_incorrect = np.sum(mask_reject & mask_incorrect)
+        
+        counts = [accepted_correct, accepted_incorrect, rejected_correct, rejected_incorrect]
+        total_samples = len(y_true)
+        percentages = [(count / total_samples) * 100 for count in counts]
+        
+        # Create bar chart
+        bars = ax.bar(range(len(categories)), counts, color=colors, alpha=0.7, edgecolor='black', linewidth=1)
+        
+        # Add count labels on bars
+        for j, (bar, count) in enumerate(zip(bars, counts)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + max(counts) * 0.01,
+                   f'{count}', ha='center', va='bottom', fontweight='bold', fontsize=10)
+        
+        # Formatting
+        ax.set_title(f'{target}', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Count', fontsize=12)
+        ax.set_xticks(range(len(categories)))
+        ax.set_xticklabels([cat.replace('/', '/\n') for cat in categories], fontsize=10)
+        ax.grid(True, axis='y', alpha=0.3)
+        
+        # Set y-axis limit with some padding
+        ax.set_ylim(0, max(counts) * 1.1)
+        
+        # Create legend with percentages
+        legend_labels = [f'{cat} ({perc:.1f}%)' for cat, perc in zip(categories, percentages)]
+        ax.legend(bars, legend_labels, loc='upper right', fontsize=9, framealpha=0.9)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.93)
+    
+    # Save the plot
+    os.makedirs(os.path.join(OUTPUT_DIR, "Plots/Uncertainty"), exist_ok=True)
+    plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/acceptance_correctness_bars.png"), 
+                dpi=300, bbox_inches='tight')
+    plt.close()
