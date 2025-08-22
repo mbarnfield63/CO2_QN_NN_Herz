@@ -77,11 +77,7 @@ def load_data(path,
     if energy_splitting:
         # Sequential energy split using original energy values
         print(f"\nUsing sequential energy splitting...")
-        train_df, val_df, test_df = sequential_energy_split(
-            df, original_energy_col, 
-            train_size=train_size, val_size=val_size, test_size=test_size,
-            overlap_fraction=overlap_fraction, random_state=random_state
-        )
+        train_df, val_df, test_df = sequential_energy_split(df)
     else:
         # Split the dataset into train, validation, and test sets    
         train_df, temp_df = train_test_split(df, test_size=test_size + val_size, 
@@ -119,101 +115,131 @@ def load_data(path,
     return train_df, val_df, test_df, scaler, target_mappers
 
 
-# ===== Sequential Energy Split
 def sequential_energy_split(df,
                             energy_col='E',
-                            train_size=0.3,
-                            val_size=0.3,
-                            test_size=0.4,
-                            overlap_fraction=0.1,
+                            test_energy_fraction=0.1,  # Top 20% of energies for test pool
+                            test_overlap_fraction=0.1,  # 10% of test pool goes to train/val
+                            train_val_split=0.9,  # 90% train, 10% val within train/val set
                             random_state=42):
     """
-    Split data sequentially by energy ranges with full overlap between train/val 
-    and minor overlap with test set (highest energies).
+    Split data sequentially by energy ranges with test set from highest energies only.
     
     Args:
         df: DataFrame with all data
         energy_col: Name of energy column
-        train_size, val_size, test_size: Size proportions (should sum to 1.0)
-        overlap_fraction: Fraction of overlap between adjacent splits (e.g., 0.1 = 10%)
+        test_energy_fraction: Fraction of highest energies to use as test pool (e.g., 0.2 = top 20%)
+        test_overlap_fraction: Fraction of test energy pool to allocate to train/val (e.g., 0.1 = 10%)
+        train_val_split: Split ratio within train/val set (e.g., 0.9 = 90% train, 10% val)
         random_state: For reproducibility within each energy range
         
     Returns:
-        train_df, val_df, test_df: DataFrames with specified overlap pattern
+        train_df, val_df, test_df: DataFrames with specified energy-based splitting
     """
     # Sort by energy to ensure proper sequential splitting
     df_sorted = df.sort_values(energy_col).reset_index(drop=True)
-    
-    # Calculate target sample sizes
     n_total = len(df_sorted)
-    n_train = int(train_size * n_total)
-    n_val = int(val_size * n_total)
-    n_test = int(test_size * n_total)
     
-    # Calculate overlap size between train/val and test
-    overlap_with_test = int(overlap_fraction * min(n_train + n_val, n_test))
+    # Define the high energy pool (top test_energy_fraction of energies)
+    high_energy_start = int(n_total * (1 - test_energy_fraction))
+    high_energy_pool = df_sorted.iloc[high_energy_start:].copy()
     
-    # Define energy ranges:
-    # Test: highest energy values (end of sorted data)
-    test_start = n_total - n_test
-    test_end = n_total
+    # Define the low energy pool (remaining lower energies)
+    low_energy_pool = df_sorted.iloc[:high_energy_start].copy()
     
-    # Train/Val: lower energy values with minor overlap into test range
-    trainval_start = 0
-    trainval_end = test_start + overlap_with_test
+    # Calculate how many samples from high energy pool go to train/val
+    n_high_energy = len(high_energy_pool)
+    n_overlap_to_trainval = int(n_high_energy * test_overlap_fraction)
     
-    # Ensure boundaries are within valid range
-    trainval_end = min(trainval_end, n_total)
-    test_start = max(test_start, 0)
+    print(f"Energy pool sizes:")
+    print(f"  Low energy pool: {len(low_energy_pool)} samples")
+    print(f"  High energy pool: {len(high_energy_pool)} samples")
+    print(f"  High energy samples for train/val: {n_overlap_to_trainval}")
+    print(f"  High energy samples remaining for test: {n_high_energy - n_overlap_to_trainval}")
     
-    # Extract the candidate pools
-    # Train and Val share the same candidate pool (full overlap)
-    trainval_candidates = df_sorted.iloc[trainval_start:trainval_end].copy()
-    test_candidates = df_sorted.iloc[test_start:test_end].copy()
-    
-    # Sample to get exact target sizes
+    # Set random seed for reproducible sampling
     np.random.seed(random_state)
     
-    # Sample train and val from the same pool (creates full overlap potential)
-    train_df = trainval_candidates.sample(n=min(n_train, len(trainval_candidates)),
-                                         random_state=random_state).reset_index(drop=True)
-    val_df = trainval_candidates.sample(n=min(n_val, len(trainval_candidates)),
-                                       random_state=random_state + 1).reset_index(drop=True)
-    test_df = test_candidates.sample(n=min(n_test, len(test_candidates)),
-                                    random_state=random_state + 2).reset_index(drop=True)
+    # Sample from high energy pool for train/val overlap
+    if n_overlap_to_trainval > 0:
+        # Sample indices for train/val overlap
+        sampled_indices = np.random.choice(
+            high_energy_pool.index, 
+            size=n_overlap_to_trainval, 
+            replace=False
+        )
+        
+        high_energy_for_trainval = high_energy_pool.loc[sampled_indices].reset_index(drop=True)
+        
+        # Remaining high energy samples for test set (exclude sampled indices)
+        remaining_indices = high_energy_pool.index.difference(sampled_indices)
+        high_energy_for_test = high_energy_pool.loc[remaining_indices].reset_index(drop=True)
+    else:
+        high_energy_for_trainval = pd.DataFrame()
+        high_energy_for_test = high_energy_pool.copy().reset_index(drop=True)
     
-    print(f"Sample sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
+    # Combine low energy pool with selected high energy samples for train/val pool
+    trainval_pool = pd.concat([low_energy_pool, high_energy_for_trainval], 
+                              ignore_index=True)
     
-    # Calculate energy ranges and statistics
+    # Split train/val pool into train and validation
+    n_trainval = len(trainval_pool)
+    n_train = int(n_trainval * train_val_split)
+    n_val = n_trainval - n_train
+    
+    # Sample train and val from the combined pool
+    train_indices = np.random.choice(
+        trainval_pool.index, 
+        size=n_train, 
+        replace=False
+    )
+    train_df = trainval_pool.loc[train_indices].reset_index(drop=True)
+    
+    # Get remaining samples for validation (ensures no overlap between train and val)
+    remaining_indices = trainval_pool.index.difference(train_indices)
+    val_df = trainval_pool.loc[remaining_indices[:n_val]].reset_index(drop=True)
+    
+    # Test set is the remaining high energy samples
+    test_df = high_energy_for_test.reset_index(drop=True)
+    
+    print(f"\nFinal split sizes: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
+    
+    # Calculate and display energy statistics
     train_energy_range = (train_df[energy_col].min(), train_df[energy_col].max())
     val_energy_range = (val_df[energy_col].min(), val_df[energy_col].max())
     test_energy_range = (test_df[energy_col].min(), test_df[energy_col].max())
     
-    print(f"\nEnergy stats:")
+    print(f"\nEnergy statistics:")
     print(f"  Train:")
     print(f"    - Range: {train_energy_range[0]:.4f} - {train_energy_range[1]:.4f}")
     print(f"    - Mean: {train_df[energy_col].mean():.4f}")
+    print(f"    - Std: {train_df[energy_col].std():.4f}")
     print(f"  Val:")
     print(f"    - Range: {val_energy_range[0]:.4f} - {val_energy_range[1]:.4f}")
     print(f"    - Mean: {val_df[energy_col].mean():.4f}")
+    print(f"    - Std: {val_df[energy_col].std():.4f}")
     print(f"  Test:")
     print(f"    - Range: {test_energy_range[0]:.4f} - {test_energy_range[1]:.4f}")
     print(f"    - Mean: {test_df[energy_col].mean():.4f}")
+    print(f"    - Std: {test_df[energy_col].std():.4f}")
     
-    # Calculate actual overlap statistics
+    # Calculate overlap statistics
     trainval_energy_min = min(train_energy_range[0], val_energy_range[0])
     trainval_energy_max = max(train_energy_range[1], val_energy_range[1])
     
-    # Overlap between train/val and test
     overlap_start = max(trainval_energy_min, test_energy_range[0])
     overlap_end = min(trainval_energy_max, test_energy_range[1])
     
     if overlap_start < overlap_end:
-        print(f"\nOverlap with test: {overlap_start:.4f} - {overlap_end:.4f}")
+        print(f"\nEnergy overlap between train/val and test: {overlap_start:.4f} - {overlap_end:.4f}")
+        overlap_percentage = (overlap_end - overlap_start) / (test_energy_range[1] - test_energy_range[0]) * 100
+        print(f"Overlap covers {overlap_percentage:.1f}% of test energy range")
     else:
-        print(f"\nNo energy overlap with test set")
-        
-    print(f"Train/Val share same energy range (full overlap potential)")
+        print(f"\nNo energy overlap between train/val and test sets")
+    
+    # Additional statistics
+    total_energy_range = df_sorted[energy_col].max() - df_sorted[energy_col].min()
+    test_energy_coverage = (test_energy_range[1] - test_energy_range[0]) / total_energy_range * 100
+    print(f"Test set covers {test_energy_coverage:.1f}% of total energy range")
     
     return train_df, val_df, test_df
 
