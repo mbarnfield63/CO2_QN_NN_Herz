@@ -4,7 +4,7 @@
 #SBATCH --error=_jobs/CO2_inference.err
 #SBATCH --partition=GPU
 #SBATCH --gres=gpu:1
-#SBATCH --constraint='v100'
+#SBATCH --constraint='a100'
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
@@ -17,3 +17,4 @@ conda activate CO2
 
 # Run Python script
 srun python Scripts/inference.py
+srun python Scripts/plot_inference_uncertainty.py

@@ -12,9 +12,10 @@ from model_utils import load_data, CO2Dataset, CO2QuantumClassifier, get_mc_drop
 from infer_utils import decode_predictions, apply_confidence_filtering
 
 
-def load_inference_data(data_path, feature_cols, target_cols, energy_cutoff=None):
+def load_inference_data_chunked(data_path, feature_cols, target_cols, chunk_size=0.1):
     """
-    Load inference dataset - same format as training data
+    Load inference dataset in chunks to manage memory
+    Returns a generator that yields chunks of data
     """
     print(f"Loading inference data from: {data_path}")
     df = pd.read_csv(data_path)
@@ -24,12 +25,6 @@ def load_inference_data(data_path, feature_cols, target_cols, energy_cutoff=None
     df = df.dropna(subset=feature_cols)
     print(f"Dataset after dropping NaNs in features: {len(df)} samples.")
 
-    # Apply energy cutoff if specified
-    if energy_cutoff is not None:
-         initial_len = len(df)
-         df = df[df['E'] <= energy_cutoff]
-         print(f"Applied energy cutoff of {energy_cutoff}. Samples reduced from {initial_len} to {len(df)}.")
-    
     # Validation checks
     for col in feature_cols:
         if col not in df.columns:
@@ -44,7 +39,21 @@ def load_inference_data(data_path, feature_cols, target_cols, energy_cutoff=None
         if col not in df.columns:
             raise ValueError(f"Required output column '{col}' not found in the dataset.")
     
-    return df
+    # Calculate chunk size
+    total_samples = len(df)
+    samples_per_chunk = int(total_samples * chunk_size)
+    if samples_per_chunk == 0:
+        samples_per_chunk = 1
+    
+    n_chunks = (total_samples + samples_per_chunk - 1) // samples_per_chunk
+    print(f"Will process {total_samples} samples in {n_chunks} chunks of ~{samples_per_chunk} samples each")
+    
+    # Yield chunks
+    for i in range(n_chunks):
+        start_idx = i * samples_per_chunk
+        end_idx = min((i + 1) * samples_per_chunk, total_samples)
+        chunk_df = df.iloc[start_idx:end_idx].copy()
+        yield i + 1, n_chunks, chunk_df
 
 
 def load_train_data(path,
@@ -172,29 +181,22 @@ def retrain_full_model(train_data_path, feature_cols, target_cols,
     return model, scaler, target_mappers
 
 
-def run_inference(model, scaler, inference_df, feature_cols, target_cols, device, 
-                 uncertainty_threshold=0.15, mc_samples=50):
+def run_inference_chunk(model, scaler, chunk_df, feature_cols, target_cols, device, mc_samples=50):
     """
-    Run inference on the loaded data with uncertainty estimation
+    Run inference on a single chunk of data with uncertainty estimation
+    Returns results with uncertainty values included
     """
-    print(f"\n{'='*60}")
-    print("RUNNING INFERENCE:")
-    print(f"{'='*60}")
-    
     # Prepare inference data
-    print("Preparing inference data...")
-    
-    # Store original columns needed for output
-    iso_values = inference_df['iso'].values
-    energy_values = inference_df['E'].values  
-    j_values = inference_df['J'].values
+    iso_values = chunk_df['iso'].values
+    energy_values = chunk_df['E'].values  
+    j_values = chunk_df['J'].values
     
     # Scale features using the scaler from training
-    inference_features = inference_df[feature_cols].copy()
+    inference_features = chunk_df[feature_cols].copy()
     inference_features_scaled = scaler.transform(inference_features)
     
     # Create dummy targets (zeros) for dataset compatibility
-    dummy_targets = np.zeros((len(inference_df), len(target_cols)), dtype=np.int64)
+    dummy_targets = np.zeros((len(chunk_df), len(target_cols)), dtype=np.int64)
     
     # Create dataset and loader
     inference_data_scaled = pd.DataFrame(inference_features_scaled, columns=feature_cols)
@@ -202,93 +204,150 @@ def run_inference(model, scaler, inference_df, feature_cols, target_cols, device
         inference_data_scaled[col] = dummy_targets[:, i]
     
     inference_ds = CO2Dataset(inference_data_scaled, feature_cols, target_cols)
-    inference_loader = DataLoader(inference_ds, batch_size=512, shuffle=False)
-    
-    print(f"Running MC Dropout inference with {mc_samples} samples...")
+    inference_loader = DataLoader(inference_ds, batch_size=256, shuffle=False)  # Smaller batch size for chunks
     
     # Get predictions with uncertainty
     y_true, y_pred, uncertainties = get_mc_dropout_predictions(
         model, inference_loader, device, n_samples=mc_samples
     )
     
-    print(f"Generated predictions for {len(y_pred)} samples")
-    print(f"Uncertainty threshold: {uncertainty_threshold}")
-    
-    # Apply confidence filtering
-    filtered_predictions = apply_confidence_filtering(
-        y_pred, uncertainties, uncertainty_threshold, target_cols
-    )
-    
-    # Create results dataframe
+    # Create results for this chunk
     results_data = []
-    n_filtered = 0
     
-    for i in range(len(inference_df)):
-        if filtered_predictions[i] is not None:
-            # Predictions passed uncertainty threshold
-            result = {
-                'iso': iso_values[i],
-                'energy': energy_values[i],
-                'J': j_values[i],
-                'hzb_v1': filtered_predictions[i][0],
-                'hzb_v2': filtered_predictions[i][1], 
-                'hzb_l2': filtered_predictions[i][2],
-                'hzb_v3': filtered_predictions[i][3]
-            }
-        else:
-            # Predictions filtered out due to high uncertainty
-            result = {
-                'iso': iso_values[i],
-                'energy': energy_values[i],
-                'J': j_values[i],
-                'hzb_v1': None,
-                'hzb_v2': None,
-                'hzb_l2': None,
-                'hzb_v3': None
-            }
-            n_filtered += 1
+    for i in range(len(chunk_df)):
+        # Calculate average uncertainty across all targets
+        # uncertainties has shape (n_samples, n_targets), so we access it as uncertainties[i, j]
+        avg_uncertainty = np.mean(uncertainties[i, :])
         
+        result = {
+            'iso': iso_values[i],
+            'energy': energy_values[i],
+            'J': j_values[i],
+            'hzb_v1': y_pred[i, 0],
+            'hzb_v2': y_pred[i, 1], 
+            'hzb_l2': y_pred[i, 2],
+            'hzb_v3': y_pred[i, 3],
+            'uncertainty': avg_uncertainty,
+            'uncertainty_v1': uncertainties[i, 0],
+            'uncertainty_v2': uncertainties[i, 1],
+            'uncertainty_l2': uncertainties[i, 2],
+            'uncertainty_v3': uncertainties[i, 3]
+        }
         results_data.append(result)
     
-    results_df = pd.DataFrame(results_data)
-    
-    print(f"Uncertainty filtering results:")
-    print(f"  Total samples: {len(results_df)}")
-    print(f"  Samples with predictions: {len(results_df) - n_filtered}")
-    print(f"  Samples filtered out: {n_filtered} ({n_filtered/len(results_df)*100:.1f}%)")
-    
-    return results_df
+    return pd.DataFrame(results_data)
 
 
-def save_inference_results(results_df, output_path):
+def initialize_output_file(output_path):
     """
-    Save predictions to file with iso, energy, J, and quantum numbers
+    Initialize the output CSV file with headers
     """
-    print(f"\nSaving inference results to: {output_path}")
-    
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Save to CSV
-    results_df.to_csv(output_path, index=False)
-    print(f"Saved {len(results_df)} predictions to {output_path}")
+    # Create header row
+    headers = ['iso', 'energy', 'J', 'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3', 
+               'uncertainty', 'uncertainty_v1', 'uncertainty_v2', 'uncertainty_l2', 'uncertainty_v3']
     
-    # Print summary statistics
-    non_null_mask = results_df['hzb_v1'].notna()
-    print(f"\nSummary:")
-    print(f"  Total entries: {len(results_df)}")
-    print(f"  With predictions: {non_null_mask.sum()}")
-    print(f"  Without predictions (high uncertainty): {(~non_null_mask).sum()}")
+    # Write header to file
+    with open(output_path, 'w') as f:
+        f.write(','.join(headers) + '\n')
+    
+    print(f"Initialized output file: {output_path}")
+
+
+def append_results_to_file(results_df, output_path):
+    """
+    Append results to the output CSV file
+    """
+    results_df.to_csv(output_path, mode='a', header=False, index=False)
+
+
+def run_chunked_inference(model, scaler, inference_data_path, feature_cols, target_cols, 
+                         device, output_path, energy_cutoff=None, chunk_size=0.1, mc_samples=50):
+    """
+    Run inference on data in chunks, appending results to output file
+    """
+    print(f"\n{'='*60}")
+    print("RUNNING CHUNKED INFERENCE:")
+    print(f"{'='*60}")
+    
+    # Initialize output file
+    initialize_output_file(output_path)
+    
+    total_processed = 0
+    total_chunks = 0
+    
+    # Process each chunk
+    for chunk_num, n_chunks, chunk_df in load_inference_data_chunked(
+        inference_data_path, feature_cols, target_cols, chunk_size
+    ):
+        print(f"\nProcessing chunk {chunk_num}/{n_chunks} ({len(chunk_df)} samples)...")
+        
+        # Run inference on this chunk
+        chunk_results = run_inference_chunk(
+            model, scaler, chunk_df, feature_cols, target_cols, device, mc_samples
+        )
+        
+        # Append results to file
+        append_results_to_file(chunk_results, output_path)
+        
+        total_processed += len(chunk_df)
+        total_chunks += 1
+        
+        print(f"Chunk {chunk_num} completed. Total processed: {total_processed}")
+        
+        # Clear variables to free memory
+        del chunk_df, chunk_results
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    print(f"\nChunked inference completed!")
+    print(f"Total chunks processed: {total_chunks}")
+    print(f"Total samples processed: {total_processed}")
+    print(f"Results saved to: {output_path}")
+
+
+def print_final_summary(output_path):
+    """
+    Print summary statistics of the final results
+    """
+    print(f"\n{'='*60}")
+    print("FINAL RESULTS SUMMARY:")
+    print(f"{'='*60}")
+    
+    # Read the final results file to get summary stats
+    try:
+        results_df = pd.read_csv(output_path)
+        
+        print(f"Total entries in output file: {len(results_df)}")
+        print(f"Columns: {list(results_df.columns)}")
+        
+        # Uncertainty statistics
+        if 'uncertainty' in results_df.columns:
+            print(f"\nUncertainty statistics:")
+            print(f"  Mean uncertainty: {results_df['uncertainty'].mean():.4f}")
+            print(f"  Median uncertainty: {results_df['uncertainty'].median():.4f}")
+            print(f"  Min uncertainty: {results_df['uncertainty'].min():.4f}")
+            print(f"  Max uncertainty: {results_df['uncertainty'].max():.4f}")
+            
+            # Show uncertainty distribution
+            for threshold in [0.1, 0.15, 0.2, 0.25, 0.3]:
+                count = (results_df['uncertainty'] <= threshold).sum()
+                pct = count / len(results_df) * 100
+                print(f"  Samples with uncertainty ≤ {threshold}: {count} ({pct:.1f}%)")
+        
+    except Exception as e:
+        print(f"Could not read output file for summary: {e}")
 
 
 def main():
     """
-    Main inference pipeline
+    Main inference pipeline with chunked processing
     """
     # Configuration
     TRAIN_DATA_PATH = 'Data/CO2_all_ma.txt'
     INFERENCE_DATA_PATH = 'Data/CO2_all_ca.txt'
-    OUTPUT_PATH = 'Data/hzb_predictions.csv'
+    OUTPUT_PATH = 'Data/hzb_predictions_with_uncertainty.csv'
     
     FEATURE_COLS = [
         "E", "gtot", "J", "Trove_v1", "Trove_v2", "Trove_v3", "Trove_coeff",
@@ -302,34 +361,32 @@ def main():
     TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
     
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    ENERGY_CUTOFF = 25000  # cm^-1
-    UNCERTAINTY_THRESHOLD = 0.25
+    CHUNK_SIZE = 0.1  # Process 10% of data at a time
+    MC_SAMPLES = 100
 
     start_time = time.time()
     print("Time start: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
-    print("Starting inference pipeline...")
+    print("Starting chunked inference pipeline...")
     print(f"Device: {DEVICE}")
+    print(f"Chunk size: {CHUNK_SIZE*100:.0f}% of data per chunk")
     
     try:
-        # Step 1: Load inference data
-        inference_df = load_inference_data(INFERENCE_DATA_PATH, FEATURE_COLS, TARGET_COLS, ENERGY_CUTOFF)
-        
-        # Step 2: Retrain model on full training data
+        # Step 1: Retrain model on full training data
         model, scaler, target_mappers = retrain_full_model(
             TRAIN_DATA_PATH, FEATURE_COLS, TARGET_COLS, device=DEVICE
         )
         
-        # Step 3: Run inference with uncertainty estimation
-        results_df = run_inference(
-            model, scaler, inference_df, FEATURE_COLS, TARGET_COLS, DEVICE,
-            uncertainty_threshold=UNCERTAINTY_THRESHOLD
+        # Step 2: Run chunked inference with uncertainty estimation
+        run_chunked_inference(
+            model, scaler, INFERENCE_DATA_PATH, FEATURE_COLS, TARGET_COLS, 
+            DEVICE, OUTPUT_PATH, CHUNK_SIZE, MC_SAMPLES
         )
         
-        # Step 4: Save results
-        save_inference_results(results_df, OUTPUT_PATH)
+        # Step 3: Print final summary
+        print_final_summary(OUTPUT_PATH)
         
         print(f"\n{'='*60}")
-        print("INFERENCE COMPLETED SUCCESSFULLY!")
+        print("CHUNKED INFERENCE COMPLETED SUCCESSFULLY!")
         print(f"{'='*60}")
         print("Time end: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())))
         elapsed_time = time.time() - start_time
