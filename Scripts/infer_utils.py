@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 from typing import List, Optional, Dict, Any
 
 
@@ -86,6 +87,63 @@ def decode_predictions(encoded_predictions: np.ndarray,
         decoded_results[target] = decoded_preds
     
     return decoded_results
+
+
+def load_train_data(path,
+        feature_cols,
+        target_cols,
+        energy_col='E',
+        train_size=0.8,
+        test_size=0.2,
+        random_state=42,
+    ):
+    """
+    Load data with sequential energy-based splitting for distinct energy ranges.
+    """
+    df = pd.read_csv(path)
+    print(f"Loaded dataset with {len(df)} samples and {len(df.columns)} columns.")
+    
+    # Drop lines with NaN values
+    df = df.dropna(subset=feature_cols + target_cols)
+    print(f"Dataset after dropping NaNs: {len(df)} samples.")
+    
+    # Validation checks
+    for col in feature_cols:
+        if col not in df.columns:
+            raise ValueError(f"Feature column '{col}' not found in the dataset.")
+    for col in target_cols:
+        if col not in df.columns:
+            raise ValueError(f"Target column '{col}' not found in the dataset.")
+    if df[feature_cols].isnull().any().any():
+        raise ValueError("NaN values found in feature columns.")
+    if df[target_cols].isnull().any().any():
+        raise ValueError("NaN values found in target columns.")
+
+    # Store original energy values before any processing
+    original_energy_col = f'{energy_col}_original'
+    df[original_energy_col] = df[energy_col].copy()
+
+    # Target encoding
+    label_encoders = {}
+    for col in target_cols:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+        label_encoders[col] = le
+        print(f"Target column '{col}': {len(le.classes_)} unique classes")
+    
+    df.drop(columns=['iso'], inplace=True)
+
+    # Scale features (but keep original energy for plotting)
+    scaler = StandardScaler()
+    df[feature_cols] = scaler.fit_transform(df[feature_cols])
+
+    # Create target mappers for compatibility
+    target_mappers = {}
+    for col in target_cols:
+        le = label_encoders[col]
+        target_mappers[col] = {original: encoded for encoded, original in enumerate(le.classes_)}
+
+    return df, scaler, target_mappers
 
 
 def match_by_energy_and_isotopologue(original_data: pd.DataFrame, 
