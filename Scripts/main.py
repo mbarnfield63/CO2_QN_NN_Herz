@@ -46,7 +46,7 @@ TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
 train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
                                                               FEATURE_COLS,
                                                               TARGET_COLS,
-                                                              energy_splitting=False,
+                                                              energy_splitting=True,
                                                               output_dir=OUTPUT_DIR)
 
 # Get target dimensions
@@ -128,7 +128,7 @@ y_true, y_pred, uncertainties = get_mc_dropout_predictions(model, test_loader, D
 
 print("Plotting uncertainty...")
 threshold = 0.15
-plot_mc_dropout_uncertainty(uncertainties, test_df['E_original'].values, train_df, TARGET_COLS, OUTPUT_DIR, threshold)
+plot_mc_dropout_uncertainty_with_correctness(y_true, y_pred, uncertainties, test_df['E_original'], train_df, TARGET_COLS, OUTPUT_DIR, threshold)
 plot_acceptance_correctness_bars(y_true, y_pred, uncertainties, TARGET_COLS, OUTPUT_DIR, threshold)
 
 # Get confidence scores and entropies

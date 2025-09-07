@@ -519,69 +519,124 @@ def plot_feature_importance(df, output_dir):
     plt.close()
 
 
-def plot_mc_dropout_uncertainty(
-    uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR, threshold=0.15
+def plot_mc_dropout_uncertainty_with_correctness(
+    y_true, y_pred, uncertainties, energy_values, train_df, TARGET_COLS, OUTPUT_DIR, threshold=0.15
 ):
-    fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(8, 8), sharex=True)
-    fig.suptitle(
-        f'MC Dropout: Predictive Uncertainty vs. Energy Level\nThreshold = {threshold:.2f}',
-        fontsize=16
-    )
+    """
+    Plot uncertainty vs energy for each target with acceptance/correctness categorization.
+    
+    Parameters:
+    - y_true: array-like, shape (n_samples, n_targets) - true labels
+    - y_pred: array-like, shape (n_samples, n_targets) - predicted labels
+    - uncertainties: array-like, shape (n_samples, n_targets) - uncertainty values
+    - energy_values: array-like, shape (n_samples,) - energy values
+    - train_df: DataFrame containing training data with 'E_original' column
+    - TARGET_COLS: list of target column names
+    - OUTPUT_DIR: string, output directory path
+    - threshold: float, uncertainty threshold for acceptance/rejection
+    """
+    fig, axes = plt.subplots(len(TARGET_COLS), 1, figsize=(10, 2.5 * len(TARGET_COLS)), sharex=True)
+    colors = ['#2E8B57', '#FF6B35', '#4169E1', '#DC143C']
+    # Handle case where there's only one target (axes won't be a list)
+    if len(TARGET_COLS) == 1:
+        axes = [axes]
 
     for i, target in enumerate(TARGET_COLS):
         ax = axes[i]
-        # Scatter plot of uncertainty for each sample below threshold
-        mask_reject = uncertainties[:, i] > threshold
-        mask_accept = ~mask_reject
-
+        
+        # Create masks for acceptance/rejection and correctness
+        mask_accept = uncertainties[:, i] <= threshold
+        mask_reject = ~mask_accept
+        mask_correct = (y_true[:, i] == y_pred[:, i])
+        mask_incorrect = ~mask_correct
+        
+        # Create the four category masks
+        accepted_correct = mask_accept & mask_correct
+        accepted_incorrect = mask_accept & mask_incorrect
+        rejected_correct = mask_reject & mask_correct
+        rejected_incorrect = mask_reject & mask_incorrect
+        
+        # Calculate percentages for legend
+        total_samples = len(y_true)
+        perc_acc_corr = (np.sum(accepted_correct) / total_samples) * 100
+        perc_acc_incorr = (np.sum(accepted_incorrect) / total_samples) * 100
+        perc_rej_corr = (np.sum(rejected_correct) / total_samples) * 100
+        perc_rej_incorr = (np.sum(rejected_incorrect) / total_samples) * 100
+        
+        # Plot the four categories
+        # Accepted/Correct: green circles
         ax.scatter(
-            energy_values[mask_accept],
-            uncertainties[mask_accept, i],
-            alpha=0.5,
-            s=10,
-            label=f'Accepted'
+            energy_values[accepted_correct],
+            uncertainties[accepted_correct, i],
+            color=colors[0],
+            marker='o',
+            s=15,
+            alpha=0.6,
+            label=f'Accepted/Correct ({perc_acc_corr:.1f}%)'
         )
-
-        # Plot rejected points in red with 'x' marker
+        
+        # Accepted/Incorrect: red crosses
         ax.scatter(
-            energy_values[mask_reject],
-            uncertainties[mask_reject, i],
-            alpha=0.7,
-            s=30,
-            color='red',
+            energy_values[accepted_incorrect],
+            uncertainties[accepted_incorrect, i],
+            color=colors[1],
             marker='x',
-            label=f'Rejected ({mask_reject.sum()/len(mask_reject)*100:.1f}%)'
+            s=25,
+            alpha=0.7,
+            label=f'Accepted/Incorrect ({perc_acc_incorr:.1f}%)'
         )
-
+        
+        # Rejected/Correct: red circles
+        ax.scatter(
+            energy_values[rejected_correct],
+            uncertainties[rejected_correct, i],
+            color=colors[2],
+            marker='o',
+            s=15,
+            alpha=0.6,
+            label=f'Rejected/Correct ({perc_rej_corr:.1f}%)'
+        )
+        
+        # Rejected/Incorrect: green crosses
+        ax.scatter(
+            energy_values[rejected_incorrect],
+            uncertainties[rejected_incorrect, i],
+            color=colors[3],
+            marker='x',
+            s=25,
+            alpha=0.7,
+            label=f'Rejected/Incorrect ({perc_rej_incorr:.1f}%)'
+        )
+        
+        # Add horizontal dashed line for threshold
+        ax.axhline(y=threshold, color='black', linestyle='--', linewidth=1, alpha=0.8)
+        
         # Highlight the energy range of the training data
         train_energy_min = train_df['E_original'].min()
         train_energy_max = train_df['E_original'].max()
         ax.axvspan(
             train_energy_min,
             train_energy_max,
-            color='green',
+            color='lightblue',
             alpha=0.1,
-            label='Training Energy Region'
+            label='Training Energy Range'
         )
-
-        ax.text(
-            0.925, 0.95, f"{target}",
-            transform=ax.transAxes,
-            fontsize=12, ha='right', va='top',
-            bbox=dict(facecolor='white', alpha=0.5, edgecolor='none')
-        )
-
-        ax.set_ylabel('Uncertainty')
-        ax.set_xlim(0, 21000)
+        
+        # Formatting
+        ax.set_title(f'{target}', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Uncertainty', fontsize=12)
+        ax.set_xlim(energy_values.min()-50, energy_values.max()+50)
         ax.set_ylim(0, 1)
-        ax.grid(True, which='both', linewidth=0.5)
-        ax.legend(loc='upper left')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
 
-    axes[-1].set_xlabel('Energy (cm^-1)')
+    axes[-1].set_xlabel('Energy (cm⁻¹)', fontsize=12)
     plt.tight_layout()
-    plt.subplots_adjust(hspace=0.1)
+    
+    # Save the plot
     os.makedirs(os.path.join(OUTPUT_DIR, "Plots/Uncertainty"), exist_ok=True)
-    plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy.png"))
+    plt.savefig(os.path.join(OUTPUT_DIR, "Plots/Uncertainty/uncertainty_vs_energy_correctness.png"), 
+                dpi=300, bbox_inches='tight')
     plt.close()
 
 

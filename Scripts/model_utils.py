@@ -117,8 +117,8 @@ def load_data(path,
 
 def sequential_energy_split(df,
                             energy_col='E',
-                            test_energy_fraction=0.1,  # Top 20% of energies for test pool
-                            test_overlap_fraction=0.1,  # 10% of test pool goes to train/val
+                            test_energy_fraction=0.1,  # Top 10% of energies for test pool
+                            test_overlap_fraction=0.05,  # 5% of test pool goes to train/val
                             train_val_split=0.9,  # 90% train, 10% val within train/val set
                             random_state=42):
     """
@@ -408,7 +408,7 @@ def get_predictions(model, dataloader, device):
 
 def get_mc_dropout_predictions(model, dataloader, device, n_samples=50):
     """
-    Performs predictions using MC Dropout to get uncertainty estimates.
+    Performs predictions using MC Dropout to get uncertainty estimates using predictive entropy.
     """
     # Activate dropout layers for uncertainty estimation
     for module in model.modules():
@@ -455,9 +455,13 @@ def get_mc_dropout_predictions(model, dataloader, device, n_samples=50):
         mean_probs = torch.mean(head_probs, dim=0) # Shape: (total_samples, n_classes)
         y_pred_list.append(torch.argmax(mean_probs, dim=1))
 
-        # 2. Uncertainty (Predictive Variance)
-        predictive_variance = torch.var(head_probs, dim=0) # Shape: (total_samples, n_classes)
-        uncertainty_list.append(torch.sum(predictive_variance, dim=1))
+        # 2. Predictive Entropy (instead of variance)
+        # Calculate entropy of the mean predictive distribution
+        # H(p̄) = -∑ p̄ log p̄, where p̄ is the mean probability
+        epsilon = 1e-8  # Small constant to prevent log(0)
+        predictive_entropy = -torch.sum(mean_probs * torch.log(mean_probs + epsilon), dim=1)
+        predictive_entropy = predictive_entropy / np.log(mean_probs.shape[1])  # Normalize to [0, 1]
+        uncertainty_list.append(predictive_entropy)
     
     # Stack the final 1D tensors for predictions and uncertainties
     y_pred = torch.stack(y_pred_list, dim=1).numpy()
