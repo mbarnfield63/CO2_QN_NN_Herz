@@ -355,7 +355,7 @@ def main():
     # Configuration
     TRAIN_DATA_PATH = 'Data/CO2_all_ma.txt'
     INFERENCE_DATA_PATH = 'Data/CO2_all_ca.txt'
-    OUTPUT_PATH = 'Data/hzb_predictions_with_uncertainty.csv'
+    OUTPUT_PATH = 'Data/qn_predictions.csv'
     
     FEATURE_COLS = [
         "E", "gtot", "J", "Trove_v1", "Trove_v2", "Trove_v3", "Trove_coeff",
@@ -366,7 +366,7 @@ def main():
         "e", "f", "Sym_A1", "Sym_A2", "Sym_B1", "Sym_B2"
     ]
     
-    TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
+    TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3", "AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]
     
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     CHUNK_SIZE = 0.1  # Process 10% of data at a time
