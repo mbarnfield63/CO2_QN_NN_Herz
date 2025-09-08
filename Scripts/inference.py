@@ -251,8 +251,12 @@ def initialize_output_file(output_path):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     # Create header row
-    headers = ['iso', 'energy', 'J', 'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3', 
-               'uncertainty', 'uncertainty_v1', 'uncertainty_v2', 'uncertainty_l2', 'uncertainty_v3']
+    headers = ['iso', 'energy', 'J',
+               'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
+               'AFGL_m1', 'AFGL_m2', 'AFGL_m3', 'AFGL_r',
+               'uncertainty',
+               'uncertainty_v1', 'uncertainty_v2', 'uncertainty_l2', 'uncertainty_v3',
+               'uncertainty_m1', 'uncertainty_m2', 'uncertainty_m3', 'uncertainty_r']
     
     # Write header to file
     with open(output_path, 'w') as f:
@@ -339,7 +343,7 @@ def print_final_summary(output_path):
             print(f"  Max uncertainty: {results_df['uncertainty'].max():.4f}")
             
             # Show uncertainty distribution
-            for threshold in [0.1, 0.15, 0.2, 0.25, 0.3]:
+            for threshold in [0.1, 0.2, 0.3, 0.4, 0.5]:
                 count = (results_df['uncertainty'] <= threshold).sum()
                 pct = count / len(results_df) * 100
                 print(f"  Samples with uncertainty ≤ {threshold}: {count} ({pct:.1f}%)")
@@ -355,7 +359,7 @@ def main():
     # Configuration
     TRAIN_DATA_PATH = 'Data/CO2_all_ma.txt'
     INFERENCE_DATA_PATH = 'Data/CO2_all_ca.txt'
-    OUTPUT_PATH = 'Data/hzb_predictions_with_uncertainty.csv'
+    OUTPUT_PATH = 'Data/qn_predictions.csv'
     
     FEATURE_COLS = [
         "E", "gtot", "J", "Trove_v1", "Trove_v2", "Trove_v3", "Trove_coeff",
@@ -366,7 +370,7 @@ def main():
         "e", "f", "Sym_A1", "Sym_A2", "Sym_B1", "Sym_B2"
     ]
     
-    TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
+    TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3", "AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]
     
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     CHUNK_SIZE = 0.1  # Process 10% of data at a time
