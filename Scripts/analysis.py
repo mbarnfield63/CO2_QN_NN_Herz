@@ -1,9 +1,13 @@
-import os
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 from sklearn.metrics import accuracy_score
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from model_utils import get_predictions
+
 
 
 def analyze_energy_performance(model, test_loader, test_df, TARGET_COLS, energy_col='E_original', device='cpu'):
@@ -135,3 +139,66 @@ def save_accuracy_report(results, target_cols, output_dir):
     df_accuracies.to_csv(os.path.join(output_dir, "CSVs/isotopologue_accuracy.csv"))
     
     return df_accuracies
+
+
+def PCA_analysis(df, features, n_components=3, standardize=True, plot=True, output_dir="Data/Outputs/Plots"):
+    """
+    Perform PCA analysis on the columns (features) of a dataframe.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe.
+    features : list
+        List of column names to use for PCA.
+    n_components : int
+        Number of principal components to compute.
+    standardize : bool
+        Whether to standardize features before PCA.
+
+    Returns:
+    --------
+    pca_df : pd.DataFrame
+        DataFrame with principal component scores for columns.
+    pca : sklearn.decomposition.PCA
+        Fitted PCA object.
+    """
+
+    # Transpose so columns become samples for PCA
+    X = df[features].T.values
+    if standardize:
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+    pca = PCA(n_components=n_components)
+    pcs = pca.fit_transform(X)
+
+    pca_columns = [f'PC{i+1}' for i in range(n_components)]
+    pca_df = pd.DataFrame(pcs, columns=pca_columns, index=features)
+
+    if plot and n_components >= 3:
+        pcs_names = pca_df.columns
+
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        # Plot 1: PC1 vs PC2
+        axs[0].scatter(pca_df[pcs_names[0]], pca_df[pcs_names[1]], alpha=0.7)
+        for i, label in enumerate(pca_df.index):
+            axs[0].text(pca_df.iloc[i, 0], pca_df.iloc[i, 1], str(label), fontsize=8, ha='right', va='bottom')
+        axs[0].set_title(f'{pcs_names[0]} vs {pcs_names[1]}')
+
+        # Plot 2: PC2 vs PC3
+        axs[1].scatter(pca_df[pcs_names[1]], pca_df[pcs_names[2]], alpha=0.7)
+        for i, label in enumerate(pca_df.index):
+            axs[1].text(pca_df.iloc[i, 1], pca_df.iloc[i, 2], str(label), fontsize=8, ha='right', va='bottom')
+        axs[1].set_title(f'{pcs_names[1]} vs {pcs_names[2]}')
+
+        for ax in axs:
+            ax.grid(True)
+            ax.set_xlim(-350, 350)
+            ax.set_ylim(-350, 350)
+
+        plt.tight_layout()
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(os.path.join(output_dir, 'PCA_columns_plots.png'))
+
+    return pca_df, pca
