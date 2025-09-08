@@ -16,13 +16,14 @@ print("Time start: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_ti
 print("Current device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
 
 # === Config
-DATA_PATH = 'Data/CO2_all_ma.txt'
+DATA_PATH = 'Data/CO2_all_ma_1.txt'
 BATCH_SIZE = 512
 EPOCHS = 100
 LEARNING_RATE = 1e-3
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = "Data/Outputs"
-CONFIDENCE_THRESHOLD = 0.8  # Threshold for confident predictions
+CONFIDENCE_THRESHOLD = 1.0  # Threshold for confident predictions
+UNC_THRESHOLD = 0.4
 
 # Create all necessary directories
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -40,7 +41,7 @@ FEATURE_COLS = [
     "e", "f", "Sym_Adp", "Sym_Ap", "Sym_A1", "Sym_A2", "Sym_B1", "Sym_B2"
 ]
 
-TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3"]
+TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3", "AFGL_m1", "AFGL_m2", "AFGL_m3", "AFGL_r"]
 
 # === Data
 train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
@@ -127,9 +128,8 @@ print("\nTest set predictions and uncertainty scores with MC Dropout...")
 y_true, y_pred, uncertainties = get_mc_dropout_predictions(model, test_loader, DEVICE, n_samples=50)
 
 print("Plotting uncertainty...")
-threshold = 0.15
-plot_mc_dropout_uncertainty_with_correctness(y_true, y_pred, uncertainties, test_df['E_original'], train_df, TARGET_COLS, OUTPUT_DIR, threshold)
-plot_acceptance_correctness_bars(y_true, y_pred, uncertainties, TARGET_COLS, OUTPUT_DIR, threshold)
+# plot_mc_dropout_uncertainty_with_correctness(y_true, y_pred, uncertainties, test_df['E_original'], train_df, TARGET_COLS, OUTPUT_DIR, UNC_THRESHOLD)
+plot_acceptance_correctness_bars(y_true, y_pred, uncertainties, TARGET_COLS, OUTPUT_DIR, UNC_THRESHOLD)
 
 # Get confidence scores and entropies
 print("\nCalculating confidence scores and entropies...")

@@ -249,7 +249,13 @@ class CO2QuantumClassifier(nn.Module):
     def __init__(self, input_dim, output_dims, p_dropout=0.1):
         super().__init__()
         self.shared = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            nn.Linear(input_dim, 512),
+            nn.GELU(),
+            nn.Dropout(p_dropout),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Dropout(p_dropout),
+            nn.Linear(256, 128),
             nn.GELU(),
             nn.Dropout(p_dropout),
             nn.Linear(128, 128),
@@ -260,9 +266,12 @@ class CO2QuantumClassifier(nn.Module):
             nn.Dropout(p_dropout)
         )
         
-        # Separate classification heads for each Herzberg quantum number
+        # More layers in each head
         self.heads = nn.ModuleList([
             nn.Sequential(
+                nn.Linear(64, 64),
+                nn.GELU(),
+                nn.Dropout(p_dropout),
                 nn.Linear(64, 32),
                 nn.GELU(),
                 nn.Dropout(p_dropout),

@@ -303,9 +303,14 @@ def confidence_by_energy(y_true, y_pred, confidences, entropies,
     df_analysis = pd.DataFrame(records)
     df_analysis.to_csv(os.path.join(output_dir, "CSVs/confidence_by_energy.csv"), index=False)
 
-    # Plot confidence and accuracy as a function of energy (line plots)
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-    axes = axes.flatten()
+    n_targets = len(target_cols)
+    n_rows = 2 if n_targets > 4 else 1
+    n_cols = 4 if n_targets > 4 else n_targets
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 5*n_rows))
+    
+    # Flatten axes for easier indexing
+    axes = axes.flatten() if n_targets > 1 else [axes]
 
     for i, target in enumerate(target_cols):
         ax = axes[i]
@@ -347,8 +352,14 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
     """
     Plot distribution of confidence scores for each target
     """
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    axes = axes.flatten()
+    n_targets = len(target_cols)
+    n_rows = 2 if n_targets > 4 else 1
+    n_cols = 4 if n_targets > 4 else n_targets
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 5*n_rows))
+   
+    # Flatten axes for easier indexing
+    axes = axes.flatten() if n_targets > 1 else [axes]
     
     for i, target in enumerate(target_cols):
         ax = axes[i]
@@ -495,9 +506,14 @@ def plot_feature_importance(df, output_dir):
     # Ensure the Plots directory exists
     os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
     
-    # Create a 2x2 grid of subplots
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 12), sharex=False)
-    axes = axes.flatten()
+    n_targets = len(df.columns)
+    n_rows = 2 if n_targets > 4 else 1
+    n_cols = 4 if n_targets > 4 else n_targets
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 5*n_rows))
+    
+    # Flatten axes for easier indexing
+    axes = axes.flatten() if n_targets > 1 else [axes]
 
     # Plot the feature importance for each quantum number
     for i, col in enumerate(df.columns):
@@ -645,6 +661,7 @@ def plot_acceptance_correctness_bars(
 ):
     """
     Plot bar charts showing Accepted/Rejected vs Correct/Incorrect for each target.
+    Supports up to 8 targets (2 rows of 4).
     
     Parameters:
     - y_true: array-like, shape (n_samples, n_targets) - true labels
@@ -654,14 +671,18 @@ def plot_acceptance_correctness_bars(
     - OUTPUT_DIR: string, output directory path
     - threshold: float, uncertainty threshold for acceptance/rejection
     """
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    n_targets = len(TARGET_COLS)
+    n_rows = 2 if n_targets > 4 else 1
+    n_cols = 4 if n_targets > 4 else n_targets
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 5*n_rows))
     fig.suptitle(
         f'Prediction Acceptance vs Correctness\nThreshold = {threshold:.2f}',
         fontsize=16
     )
     
     # Flatten axes for easier indexing
-    axes = axes.flatten()
+    axes = axes.flatten() if n_targets > 1 else [axes]
     
     # Colors for the four categories
     colors = ['#2E8B57', '#FF6B35', '#4169E1', '#DC143C']  # Green, Orange, Blue, Red
@@ -708,6 +729,10 @@ def plot_acceptance_correctness_bars(
         # Create legend with percentages
         legend_labels = [f'{cat} ({perc:.1f}%)' for cat, perc in zip(categories, percentages)]
         ax.legend(bars, legend_labels, loc='upper right', fontsize=9, framealpha=0.9)
+    
+    # Hide unused axes if TARGET_COLS < n_rows * n_cols
+    for j in range(len(TARGET_COLS), n_rows * n_cols):
+        axes[j].set_visible(False)
     
     plt.tight_layout()
     plt.subplots_adjust(top=0.93)
