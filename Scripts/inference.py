@@ -8,11 +8,10 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn, optim
 
-from model_utils import load_data, CO2Dataset, CO2QuantumClassifier, get_mc_dropout_predictions
-from infer_utils import decode_predictions, apply_confidence_filtering
+from model_utils import CO2Dataset, CO2QuantumClassifier, get_mc_dropout_predictions
 
 
-def load_inference_data_chunked(data_path, feature_cols, target_cols, chunk_size=0.1):
+def load_inference_data_chunked(data_path, feature_cols, target_cols, chunk_size=0.1, energy_cutoff=None):
     """
     Load inference dataset in chunks to manage memory
     Returns a generator that yields chunks of data
@@ -20,6 +19,12 @@ def load_inference_data_chunked(data_path, feature_cols, target_cols, chunk_size
     print(f"Loading inference data from: {data_path}")
     df = pd.read_csv(data_path)
     print(f"Loaded inference dataset with {len(df)} samples and {len(df.columns)} columns.")
+    
+    # Apply energy cutoff filter if specified
+    if energy_cutoff is not None:
+        original_count = len(df)
+        df = df[df['E'] <= energy_cutoff]
+        print(f"Applied energy cutoff ≤ {energy_cutoff}: {original_count} → {len(df)} samples")
     
     # Drop lines with NaN values in feature columns
     df = df.dropna(subset=feature_cols)
@@ -207,7 +212,7 @@ def run_inference_chunk(model, scaler, chunk_df, feature_cols, target_cols, devi
     inference_loader = DataLoader(inference_ds, batch_size=256, shuffle=False)  # Smaller batch size for chunks
     
     # Get predictions with uncertainty
-    y_true, y_pred, uncertainties = get_mc_dropout_predictions(
+    _, y_pred, uncertainties = get_mc_dropout_predictions(
         model, inference_loader, device, n_samples=mc_samples
     )
     
@@ -272,15 +277,18 @@ def run_chunked_inference(model, scaler, inference_data_path, feature_cols, targ
     print("RUNNING CHUNKED INFERENCE:")
     print(f"{'='*60}")
     
+    if energy_cutoff is not None:
+        print(f"Energy cutoff: ≤ {energy_cutoff}")
+    
     # Initialize output file
     initialize_output_file(output_path)
     
     total_processed = 0
     total_chunks = 0
     
-    # Process each chunk
+    # Process each chunk - pass energy_cutoff to the chunked loader
     for chunk_num, n_chunks, chunk_df in load_inference_data_chunked(
-        inference_data_path, feature_cols, target_cols, chunk_size
+        inference_data_path, feature_cols, target_cols, chunk_size, energy_cutoff
     ):
         print(f"\nProcessing chunk {chunk_num}/{n_chunks} ({len(chunk_df)} samples)...")
         
@@ -363,6 +371,7 @@ def main():
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     CHUNK_SIZE = 0.1  # Process 10% of data at a time
     MC_SAMPLES = 100
+    ENERGY_CUTOFF = 15000  # Optional energy cutoff filter
 
     start_time = time.time()
     print("Time start: ", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(start_time)))
@@ -379,7 +388,7 @@ def main():
         # Step 2: Run chunked inference with uncertainty estimation
         run_chunked_inference(
             model, scaler, INFERENCE_DATA_PATH, FEATURE_COLS, TARGET_COLS, 
-            DEVICE, OUTPUT_PATH, CHUNK_SIZE, MC_SAMPLES
+            DEVICE, OUTPUT_PATH, energy_cutoff=ENERGY_CUTOFF, chunk_size=CHUNK_SIZE, mc_samples=MC_SAMPLES
         )
         
         # Step 3: Print final summary
