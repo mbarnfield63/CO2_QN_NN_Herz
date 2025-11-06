@@ -26,7 +26,7 @@ for i in range(len(y_intervals) - 1):
     
     # Count points in this region
     points_in_region = ((df['uncertainty'] >= lower_bound) & 
-                       (df['uncertainty'] < upper_bound)).sum()
+                        (df['uncertainty'] < upper_bound)).sum()
     
     # Calculate percentage
     percentage = (points_in_region / total_points) * 100

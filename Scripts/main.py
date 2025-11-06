@@ -45,10 +45,10 @@ TARGET_COLS = ["hzb_v1", "hzb_v2", "hzb_l2", "hzb_v3", "AFGL_m1", "AFGL_m2", "AF
 
 # === Data
 train_df, val_df, test_df, scaler, target_mappers = load_data(DATA_PATH,
-                                                              FEATURE_COLS,
-                                                              TARGET_COLS,
-                                                              energy_splitting=True,
-                                                              output_dir=OUTPUT_DIR)
+                                                                FEATURE_COLS,
+                                                                TARGET_COLS,
+                                                                energy_splitting=True,
+                                                                output_dir=OUTPUT_DIR)
 
 # Get target dimensions
 target_dims = []
