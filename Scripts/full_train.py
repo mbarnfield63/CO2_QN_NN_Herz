@@ -13,74 +13,74 @@ from model_utils import CO2Dataset, CO2QuantumClassifier
 
 
 def train_full_model(
-   train_data_path,
-   feature_cols,
-   target_cols,
-   p_dropout=0.1,
-   batch_size=512,
-   epochs=100,
-   learning_rate=1e-3,
-   device='cuda'
-):
-   """
-   Train model on full dataset without validation split and save for inference.
-   Also plots calibration curve after training.
-   """
-   print(f"\n{'='*60}")
-   print(f"TRAINING MODEL WITH p_dropout = {p_dropout}")
-   print(f"{'='*60}")
+    train_data_path,
+    feature_cols,
+    target_cols,
+    p_dropout=0.1,
+    batch_size=512,
+    epochs=100,
+    learning_rate=1e-3,
+    device='cuda'
+    ):
+    """
+    Train model on full dataset without validation split and save for inference.
+    Also plots calibration curve after training.
+    """
+    print(f"\n{'='*60}")
+    print(f"TRAINING MODEL WITH p_dropout = {p_dropout}")
+    print(f"{'='*60}")
 
-   # Load full dataset (train only)
-   train_df, scaler, target_mappers = load_train_data(
-      train_data_path, feature_cols, target_cols
-   )
+    # Load full dataset (train only)
+    train_df, scaler, target_mappers = load_train_data(
+        train_data_path, feature_cols, target_cols
+    )
 
-   # Get target dimensions
-   target_dims = [int(train_df[col].max()) + 1 for col in target_cols]
-   print(f"Target dimensions: {target_dims}")
+    # Get target dimensions
+    target_dims = [int(train_df[col].max()) + 1 for col in target_cols]
+    print(f"Target dimensions: {target_dims}")
 
-   # Dataset & loader
-   train_ds = CO2Dataset(train_df, feature_cols, target_cols)
-   train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    # Dataset & loader
+    train_ds = CO2Dataset(train_df, feature_cols, target_cols)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
-   # Model
-   model = CO2QuantumClassifier(len(feature_cols), target_dims, p_dropout=p_dropout).to(device)
-   optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-   criterion_list = [nn.CrossEntropyLoss() for _ in range(len(target_cols))]
+    # Model
+    model = CO2QuantumClassifier(len(feature_cols), target_dims, p_dropout=p_dropout).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    criterion_list = [nn.CrossEntropyLoss() for _ in range(len(target_cols))]
 
-   print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-   # Training loop
-   model.train()
-   for epoch in range(epochs):
-      total_loss = 0
-      for X, y in train_loader:
-         X, y = X.to(device), y.to(device)
-         optimizer.zero_grad()
-         outputs = model(X)
-         loss = sum(criterion_list[i](outputs[i], y[:, i]) for i in range(len(outputs)))
-         loss.backward()
-         optimizer.step()
-         total_loss += loss.item()
+    # Training loop
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0
+        for X, y in train_loader:
+            X, y = X.to(device), y.to(device)
+            optimizer.zero_grad()
+            outputs = model(X)
+            loss = sum(criterion_list[i](outputs[i], y[:, i]) for i in range(len(outputs)))
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
 
-      avg_loss = total_loss / len(train_loader)
-      if (epoch + 1) % 20 == 0:
-         print(f"Epoch {epoch+1:3d}/{epochs} | Loss: {avg_loss:.4f}")
+        avg_loss = total_loss / len(train_loader)
+        if (epoch + 1) % 20 == 0:
+            print(f"Epoch {epoch+1:3d}/{epochs} | Loss: {avg_loss:.4f}")
 
-   print("Training completed.")
+    print("Training completed.")
 
-   # Plot calibration curve using the training data
-   plot_calibration_curve(
-      model, 
-      DataLoader(train_ds, batch_size=512, shuffle=False), 
-      feature_cols, 
-      target_cols, 
-      device,
-      output_dir='Data/Outputs/', 
-      p_dropout=p_dropout
-   )
+    # Plot calibration curve using the training data
+    plot_calibration_curve(
+        model, 
+        DataLoader(train_ds, batch_size=512, shuffle=False), 
+        feature_cols, 
+        target_cols, 
+        device,
+        output_dir='Data/Outputs/', 
+        p_dropout=p_dropout
+    )
 
-   return model, scaler, target_mappers
+    return model, scaler, target_mappers
 
 
 def save_model(model, scaler, target_mappers, output_dir, p_dropout):

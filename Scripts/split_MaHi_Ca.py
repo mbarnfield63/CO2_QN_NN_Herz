@@ -20,9 +20,9 @@ iso_formats = {
 }
 
 column_names = ['ID', 'E', 'gtot', 'J', 'unc', '??', 'tot_sym', 'e_f',
-               'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
-               'Trove_coeff', 'AFGL_m1', 'AFGL_m2', 'AFGL_l2', 'AFGL_m3', 'AFGL_r',
-               'Trove_v1', 'Trove_v2', 'Trove_v3', 'Source', 'E_Ca']
+                'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
+                'Trove_coeff', 'AFGL_m1', 'AFGL_m2', 'AFGL_l2', 'AFGL_m3', 'AFGL_r',
+                'Trove_v1', 'Trove_v2', 'Trove_v3', 'Source', 'E_Ca']
 
 def split_raw_file(filename):
     """

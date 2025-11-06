@@ -103,8 +103,8 @@ def load_data(path,
     if plot_energy_distributions:
         print("\nGenerating energy distribution plots...")
         plot_energy_distributions_detailed(train_df, val_df, test_df, 
-                                          energy_col=original_energy_col,
-                                          output_dir=output_dir)
+                                            energy_col=original_energy_col,
+                                            output_dir=output_dir)
 
     # Create target mappers for compatibility
     target_mappers = {}
@@ -179,7 +179,7 @@ def sequential_energy_split(df,
     
     # Combine low energy pool with selected high energy samples for train/val pool
     trainval_pool = pd.concat([low_energy_pool, high_energy_for_trainval], 
-                              ignore_index=True)
+                                ignore_index=True)
     
     # Split train/val pool into train and validation
     n_trainval = len(trainval_pool)
@@ -331,7 +331,7 @@ def compute_loss(outputs, targets, criterion_list, target_cols, penalty_weight=1
 
 # ===== Train/Eval
 def train(model, dataloader, optimizer, criterion_list, 
-          TARGET_COLS, device, confidence_threshold=0.8):
+            TARGET_COLS, device, confidence_threshold=0.8):
     """
     Training function that tracks confidence statistics
     """
@@ -483,7 +483,7 @@ def get_mc_dropout_predictions(model, dataloader, device, n_samples=50):
 
 
 def get_uncertain_predictions(y_true, y_pred, confidences, entropies, 
-                              target_cols, confidence_threshold=0.5):
+                                target_cols, confidence_threshold=0.5):
     """
     Identify predictions with low confidence for further analysis
     """

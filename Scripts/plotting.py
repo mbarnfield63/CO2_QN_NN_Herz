@@ -101,8 +101,8 @@ def plot_enhanced_training_analysis(train_losses, val_losses, train_confidences,
 
 
 def plot_energy_distributions_detailed(train_df, val_df, test_df, 
-                                       energy_col='E_original', 
-                                       output_dir=None):
+                                        energy_col='E_original', 
+                                        output_dir=None):
     """
     Plot energy distributions across splits showing both original and scaled values.
     """
@@ -112,8 +112,8 @@ def plot_energy_distributions_detailed(train_df, val_df, test_df,
     # Plot 1: Energy Distribution (Top Left)
     ax1 = plt.subplot(gs[0, 0])
     for data, label, color in zip([train_df[energy_col], val_df[energy_col], test_df[energy_col]], 
-                                  ['Train', 'Val', 'Test'],
-                                  ['blue', 'orange', 'green']):
+                                    ['Train', 'Val', 'Test'],
+                                    ['blue', 'orange', 'green']):
         ax1.hist(data, bins=50, alpha=0.3, density=True, label=label, color=color)
     ax1.set_xlabel('Energy (Original Units)')
     ax1.set_ylabel('Density')
@@ -161,19 +161,19 @@ def plot_energy_distributions_detailed(train_df, val_df, test_df,
         table_data.append(row)
 
     table = ax3.table(cellText=table_data,
-                      colLabels=['Split', 'Count', 'Mean', 'Median', 'Std', 'Min', 'Max'],
-                      cellLoc='center', loc='center')
+                        colLabels=['Split', 'Count', 'Mean', 'Median', 'Std', 'Min', 'Max'],
+                        cellLoc='center', loc='center')
     table.auto_set_font_size(False)
     table.set_fontsize(12)
     table.scale(1, 2)
     ax3.set_title('Energy Statistics (Original Units)')
         
     plt.tight_layout()
-   
+
     if output_dir:
         os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
         plt.savefig(os.path.join(output_dir, "Plots/Training/detailed_energy_distribution_analysis.png"), 
-                   dpi=300, bbox_inches='tight')
+                    dpi=300, bbox_inches='tight')
     plt.close()
     
     # Print detailed statistics
@@ -219,8 +219,8 @@ def plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_co
     """
     # Get unique isotopologues from all splits
     all_isos = sorted(set(train_df[iso_col].unique()) | 
-                     set(val_df[iso_col].unique()) | 
-                     set(test_df[iso_col].unique()))
+                        set(val_df[iso_col].unique()) | 
+                        set(test_df[iso_col].unique()))
     
     # Calculate grid dimensions
     n_isos = len(all_isos)
@@ -255,7 +255,7 @@ def plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_co
             iso_data = data_df[data_df[iso_col] == iso]
             if len(iso_data) > 0:
                 ax.hist(iso_data[energy_col], bins=30, alpha=0.3, density=True, 
-                       label=f'{label} (n={len(iso_data)})', color=color)
+                        label=f'{label} (n={len(iso_data)})', color=color)
         
         # Set consistent axis limits
         ax.set_xlim(energy_min, energy_max)
@@ -276,12 +276,12 @@ def plot_iso_by_energy_split(train_df, val_df, test_df, iso_col='iso', energy_co
     if output_dir:
         os.makedirs(os.path.join(output_dir, "Plots"), exist_ok=True)
         plt.savefig(os.path.join(output_dir, "Plots/Isotopologue/isotopologue_energy_distributions.png"), 
-                   dpi=300, bbox_inches='tight')
+                    dpi=300, bbox_inches='tight')
     plt.close()
 
 
 def confidence_by_energy(y_true, y_pred, confidences, entropies, 
-                         energy_values, target_cols, output_dir):
+                            energy_values, target_cols, output_dir):
     # Sort by energy for smooth lines
     sort_idx = np.argsort(energy_values)
     energy_sorted = energy_values[sort_idx]
@@ -357,7 +357,7 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
     n_cols = 4 if n_targets > 4 else n_targets
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 5*n_rows))
-   
+
     # Flatten axes for easier indexing
     axes = axes.flatten() if n_targets > 1 else [axes]
     
@@ -367,7 +367,7 @@ def plot_confidence_distribution(confidences, entropies, target_cols, output_dir
         # Plot histogram of confidence scores
         ax.hist(confidences[:, i], bins=50, alpha=0.7, label='Confidence', density=True)
         ax.axvline(np.mean(confidences[:, i]), color='red', linestyle='--', 
-                  label=f'Mean: {np.mean(confidences[:, i]):.3f}')
+                    label=f'Mean: {np.mean(confidences[:, i]):.3f}')
         
         ax.set_xlabel('Confidence Score')
         ax.set_ylabel('Density')
@@ -428,12 +428,12 @@ def plot_isotopologue_accuracies(results, target_cols, output_dir, figsize=(8, 6
         # Add horizontal line at mean accuracy
         mean_acc = np.mean(accuracies)
         plt.axhline(y=mean_acc, color='red', linestyle='--', alpha=0.7, 
-                   label=f'Mean: {mean_acc:.3f}')
+                    label=f'Mean: {mean_acc:.3f}')
         plt.legend()
         
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"Plots/Isotopologue/isotopologue_accuracy_{target_col.replace('/', '_')}.png"), 
-                   dpi=300, bbox_inches='tight')
+                    dpi=300, bbox_inches='tight')
         plt.close()
 
 
@@ -483,10 +483,10 @@ def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(8, 4
     for i, target in enumerate(target_cols):
         target_data = df_plot[df_plot['Target'] == target]
         accuracies = [target_data[target_data['Isotopologue'] == iso]['Accuracy'].iloc[0] 
-                     for iso in isotopologues]
+                        for iso in isotopologues]
         mean_acc = np.mean(accuracies)*100
         plt.bar(x + i * width - width * (len(target_cols)-1)/2, accuracies, 
-               width, label=f"{target}\n(mean={mean_acc:.3f} %)", color=colors[i])
+                width, label=f"{target}\n(mean={mean_acc:.3f} %)", color=colors[i])
     
     plt.xlabel('Isotopologue')
     plt.ylabel('Accuracy')
@@ -498,7 +498,7 @@ def plot_isotopologue_comparison(results, target_cols, output_dir, figsize=(8, 4
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "Plots/Isotopologue/all_isotopologues_accuracy_comparison.png"), 
-               dpi=300, bbox_inches='tight')
+                dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -714,7 +714,7 @@ def plot_acceptance_correctness_bars(
         for j, (bar, count) in enumerate(zip(bars, counts)):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height + max(counts) * 0.01,
-                   f'{count}', ha='center', va='bottom', fontweight='bold', fontsize=10)
+                    f'{count}', ha='center', va='bottom', fontweight='bold', fontsize=10)
         
         # Formatting
         ax.set_title(f'{target}', fontsize=14, fontweight='bold')

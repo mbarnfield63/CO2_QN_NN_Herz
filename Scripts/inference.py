@@ -130,7 +130,7 @@ def load_train_data(path,
 
 
 def retrain_full_model(train_data_path, feature_cols, target_cols, 
-                      batch_size=512, epochs=100, learning_rate=1e-3, device='cuda'):
+                        batch_size=512, epochs=100, learning_rate=1e-3, device='cuda'):
     """
     Retrain model on full training dataset (no validation split for inference)
     """
@@ -260,11 +260,11 @@ def initialize_output_file(output_path):
     
     # Create header row
     headers = ['iso', 'energy', 'J',
-               'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
-               'AFGL_m1', 'AFGL_m2', 'AFGL_m3', 'AFGL_r',
-               'uncertainty',
-               'uncertainty_v1', 'uncertainty_v2', 'uncertainty_l2', 'uncertainty_v3',
-               'uncertainty_m1', 'uncertainty_m2', 'uncertainty_m3', 'uncertainty_r']
+                'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3',
+                'AFGL_m1', 'AFGL_m2', 'AFGL_m3', 'AFGL_r',
+                'uncertainty',
+                'uncertainty_v1', 'uncertainty_v2', 'uncertainty_l2', 'uncertainty_v3',
+                'uncertainty_m1', 'uncertainty_m2', 'uncertainty_m3', 'uncertainty_r']
     
     # Write header to file
     with open(output_path, 'w') as f:
@@ -281,7 +281,7 @@ def append_results_to_file(results_df, output_path):
 
 
 def run_chunked_inference(model, scaler, inference_data_path, feature_cols, target_cols, 
-                         device, output_path, energy_cutoff=None, chunk_size=0.1, mc_samples=50):
+                            device, output_path, energy_cutoff=None, chunk_size=0.1, mc_samples=50):
     """
     Run inference on data in chunks, appending results to output file
     """

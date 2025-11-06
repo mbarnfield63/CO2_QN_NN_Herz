@@ -5,9 +5,9 @@ from typing import List, Optional, Dict, Any
 
 
 def apply_confidence_filtering(predictions: np.ndarray, 
-                             uncertainties: np.ndarray, 
-                             threshold: float,
-                             target_cols: List[str]) -> List[Optional[List[int]]]:
+                                uncertainties: np.ndarray, 
+                                threshold: float,
+                                target_cols: List[str]) -> List[Optional[List[int]]]:
     """
     Filter predictions based on uncertainty threshold.
     If ANY target has high uncertainty, filter out ALL predictions for that sample.
@@ -62,7 +62,7 @@ def apply_confidence_filtering(predictions: np.ndarray,
 
 
 def decode_predictions(encoded_predictions: np.ndarray, 
-                      target_mappers: Dict[str, Dict[int, Any]]) -> Dict[str, List]:
+                        target_mappers: Dict[str, Dict[int, Any]]) -> Dict[str, List]:
     """
     Decode integer predictions back to original labels using target mappers.
     
@@ -182,10 +182,10 @@ def match_by_energy_and_isotopologue(original_data: pd.DataFrame,
 
 
 def replace_values_in_file(input_file_path: str, 
-                          replacements: pd.DataFrame,
-                          output_file_path: str,
-                          key_columns: List[str] = ['iso', 'energy', 'J'],
-                          value_columns: List[str] = ['hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3']) -> int:
+                            replacements: pd.DataFrame,
+                            output_file_path: str,
+                            key_columns: List[str] = ['iso', 'energy', 'J'],
+                            value_columns: List[str] = ['hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3']) -> int:
     """
     Replace values in a file based on key matching.
     
@@ -239,7 +239,7 @@ def replace_values_in_file(input_file_path: str,
 
 
 def analyze_prediction_coverage(inference_results: pd.DataFrame, 
-                               target_cols: List[str]) -> Dict[str, Any]:
+                                target_cols: List[str]) -> Dict[str, Any]:
     """
     Analyze the coverage and quality of predictions.
     
@@ -298,7 +298,7 @@ def print_prediction_summary(analysis: Dict[str, Any], target_cols: List[str]):
 
 
 def validate_inference_output(results_df: pd.DataFrame, 
-                             expected_columns: List[str] = ['iso', 'energy', 'J', 'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3']) -> bool:
+                                expected_columns: List[str] = ['iso', 'energy', 'J', 'hzb_v1', 'hzb_v2', 'hzb_l2', 'hzb_v3']) -> bool:
     """
     Validate that inference output has expected format.
     
