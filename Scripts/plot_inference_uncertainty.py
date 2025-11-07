@@ -1,14 +1,20 @@
-import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
+import pandas as pd
+import seaborn as sns
 
-df = pd.read_csv('Data/hzb_predictions_with_uncertainty.csv')
+df = pd.read_csv('Data/qn_predictions.csv')
+# Group by 'energy' and calculate the mean of uncertainty columns
+uncertainty_cols = [col for col in df.columns if col.startswith('uncertainty')]
+df_avg = df.groupby('energy', as_index=False)[uncertainty_cols].mean()
+
 
 fig, ax = plt.subplots(figsize=(10, 6))
 
-# Create scatter plot without hue
-sns.scatterplot(data=df, x='energy', y='uncertainty', ax=ax, alpha=0.6)
+# Create scatter plot
+sns.scatterplot(data=df_avg, x='energy', y='uncertainty',
+                marker='.', ax=ax, alpha=0.6,
+                color='#440154')
 
 # Set y-axis limits with top at 1.0
 ax.set_ylim(0, 1.0)
@@ -38,8 +44,8 @@ for i in range(len(y_intervals) - 1):
             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
 
 # Set labels and title
-ax.set_title('Uncertainty vs Energy with Regional Percentages')
-ax.set_xlabel('Energy (cm-1)')
+#ax.set_title('Uncertainty vs Energy with Regional Percentages')
+ax.set_xlabel(r'MARVEL Energy / cm$\mathregular{^{-1}}$')
 ax.set_ylabel('Uncertainty')
 
 # Adjust layout to make room for percentage labels
