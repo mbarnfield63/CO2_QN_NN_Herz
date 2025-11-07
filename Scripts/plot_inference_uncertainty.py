@@ -4,15 +4,11 @@ import pandas as pd
 import seaborn as sns
 
 df = pd.read_csv('Data/qn_predictions.csv')
-# Group by 'energy' and calculate the mean of uncertainty columns
-uncertainty_cols = [col for col in df.columns if col.startswith('uncertainty')]
-df_avg = df.groupby('energy', as_index=False)[uncertainty_cols].mean()
-
 
 fig, ax = plt.subplots(figsize=(10, 6))
 
 # Create scatter plot
-sns.scatterplot(data=df_avg, x='energy', y='uncertainty',
+sns.scatterplot(data=df, x='energy', y='uncertainty',
                 marker='.', ax=ax, alpha=0.6,
                 color='#440154')
 
